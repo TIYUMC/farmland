@@ -1,0 +1,467 @@
+/* ============================
+   星露谷风牧场 · 样式
+   ============================ */
+* {
+  margin: 0; padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+:root {
+  --bg-dark: #1a1a2e;
+  --bg-toolbar: #2d2d44;
+  --bg-panel: #16213e;
+  --accent: #e2b714;
+  --accent-dim: #a0840f;
+  --text: #e8e8e8;
+  --text-dim: #8899aa;
+  --hp: #4ade80;
+  --hp-bg: #1e3a2f;
+  --overlay: rgba(0,0,0,0.7);
+  --border: #3a3a5c;
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+body {
+  background: var(--bg-dark);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  width: 100vw; height: 100vh;
+}
+
+#game-container {
+  display: flex; flex-direction: column;
+  width: 100%; height: 100vh;
+}
+
+/* ===== HUD ===== */
+#hud-bar {
+  display: flex; align-items: center;
+  padding: 8px 16px;
+  background: var(--bg-toolbar);
+  border-bottom: 2px solid var(--border);
+  gap: 20px;
+  font-size: 14px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.hud-item { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.hud-label { color: var(--text-dim); font-size: 12px; }
+.hud-label img {
+  width: 18px; height: 18px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+#stamina-bar-bg {
+  width: 120px; height: 14px;
+  background: var(--hp-bg);
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid #2a5a3f;
+}
+#stamina-bar-fill {
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  border-radius: 7px;
+  transition: width 0.3s ease;
+}
+
+/* ===== Canvas ===== */
+#game-canvas {
+  display: block;
+  background: #3a5a3a; /* 草地底色 */
+  cursor: crosshair;
+  /* width/height 由 JS 设置，与 buffer 一致，以免鼠标坐标偏移 */
+}
+
+/* ===== 商店图标叠层（DOM 渲染，清晰度与工具栏一致）===== */
+#shop-icons {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none; /* 点击穿透到 canvas，交易逻辑由 canvas 点击处理 */
+  z-index: 10;
+}
+/* 每个物品图标 + 数量角标的包裹层（绝对定位到槽位中心） */
+.shop-item {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+}
+/* 背包网格物品可拖拽：恢复 pointer-events 以成为拖拽源（其余图标保持穿透） */
+.shop-item.is-draggable {
+  pointer-events: auto;
+  cursor: grab;
+}
+.shop-item.is-draggable:active {
+  cursor: grabbing;
+}
+/* 输入框投放区：透明命中层，覆盖预览区输入槽，接收 dragover/drop */
+.shop-dropzone {
+  position: absolute;
+  pointer-events: auto;
+  cursor: copy;
+  /* 半透明高亮，提示此处可放置（仅投放态可见感弱，主要靠交互） */
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+}
+/* 列表行图标槽位：底色透明，让后面的模板框（浅灰/深色选中框）透出来，
+   小麦等顶部透明的图标透明区显示框的底色，看起来像坐在槽位里而非被切掉。 */
+.shop-item--slot {
+  background-color: transparent;
+  border-radius: 4px;
+}
+.shop-item img {
+  width: 100%; height: 100%;
+  /* 与工具栏保持同一套渲染管线：MC 像素风纹理用最近邻放大才清晰
+     （wheat_stage7 等原生 16x16 贴图用 auto 双线性会被糊成一片） */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+}
+/* 物品数量角标（与背包 .inv-count 同款样式） */
+.shop-count {
+  position: absolute;
+  right: 1px; bottom: -1px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000, -1px 0 0 #000, 0 -1px 0 #000, 1px 0 0 #000, 0 1px 0 #000;
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* ===== 底部工具栏 ===== */
+#toolbar {
+  display: flex; align-items: center;
+  padding: 6px 12px;
+  background: var(--bg-toolbar);
+  border-top: 2px solid var(--border);
+  gap: 6px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  z-index: 10;
+}
+.tool-btn {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 4px 10px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-dim);
+  transition: all 0.15s;
+  min-width: 56px;
+}
+.tool-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.tool-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(226,183,20,0.12);
+}
+/* 调试快进开启：仅用图标发光提示，不加选中边框，避免与「手中物品」框形成第二个高亮框 */
+.tool-btn.debug-on { color: var(--accent); }
+.tool-btn.debug-on .tool-icon { filter: drop-shadow(0 0 6px #ffd54a); }
+.tool-icon { font-size: 20px; line-height: 1; position: relative; }
+.tool-icon-img {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* 手持物品槽：显示玩家当前「手里拿着」的工具/种子；空手时仅留一个空格子、不高亮 */
+/* 固定宽高，避免空手时内容塌陷导致边框收成椭圆/胶囊形 */
+#held-slot {
+  min-width: 64px;
+  width: 64px;
+  height: 56px;
+  justify-content: center;
+}
+#held-slot.has-item {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(226,183,20,0.14);
+}
+#held-slot .tool-icon { font-size: 20px; line-height: 1; position: relative; }
+#held-slot .tool-icon-img {
+  width: 30px; height: 30px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  display: inline-block; vertical-align: middle;
+}
+
+/* 行内小图标（商店金额、结算总额的金锭等） */
+.icon-sm {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  display: inline-block;
+  vertical-align: -3px;
+}
+
+/* 商店弹窗标题的绿宝石图标 */
+.icon-title {
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  display: inline-block;
+  vertical-align: -4px;
+}
+.tool-badge {
+  position: absolute; top: -6px; right: -14px;
+  font-size: 9px; color: var(--text-dim);
+}
+.tool-name { font-size: 10px; margin-top: 2px; }
+.tool-separator {
+  width: 1px; height: 32px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+/* ===== 状态消息 ===== */
+#status-message {
+  position: fixed;
+  top: 52px; left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 24px;
+  background: rgba(0,0,0,0.82);
+  color: var(--text);
+  font-size: 18px;
+  border-radius: 10px;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  z-index: 50;
+  text-align: center;
+}
+.status-hidden { opacity: 0; }
+.status-visible { opacity: 1; }
+
+/* 提示框里的锄头贴图（替换原 emoji 🔨） */
+#status-message .status-hoe {
+  height: 22px;
+  vertical-align: -4px;
+  image-rendering: pixelated;
+  margin-right: 2px;
+}
+
+/* ===== 正在干活中（独占状态） ===== */
+#busy-indicator {
+  position: fixed;
+  top: 52px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 8px 20px;
+  background: rgba(0,0,0,0.82);
+  color: var(--text);
+  font-size: 16px;
+  border-radius: 10px;
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.busy-icon {
+  height: 20px;
+  vertical-align: -4px;
+  image-rendering: pixelated;
+  margin-right: 6px;
+}
+.busy-hidden { display: none; }
+.busy-visible { display: block; }
+.busy-bar {
+  margin-top: 6px;
+  height: 6px;
+  width: 150px;
+  background: rgba(255,255,255,0.22);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#busy-fill {
+  height: 100%;
+  width: 0%;
+  background: #ffcf5a;
+  border-radius: 3px;
+}
+
+/* ===== 弹窗 ===== */
+.overlay-hidden { display: none; }
+.overlay-visible { display: flex; }
+
+#inventory-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  align-items: center; justify-content: center;
+  z-index: 100;
+}
+
+/* 背包面板：MC inventory 纹理背景（176:166 比例） */
+#inventory-panel {
+  position: relative;
+  width: min(760px, 94vw);
+  /* 匹配 inventory.png 原始比例 176:166 */
+  aspect-ratio: 176 / 166;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  border: 4px solid #3b3b3b;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  color: #fff;
+}
+
+/* 关闭按钮已移除：背包关闭改为点击面板外区域 or 按 B 键 */
+
+/* 金币栏：覆盖在纹理顶部盔甲/头像区域上方居中（钱进背包） */
+#inv-money {
+  position: absolute;
+  top: 2.8%; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px;
+  font-size: clamp(14px, 2.2vw, 22px);
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.85);
+  z-index: 4;
+  white-space: nowrap;
+}
+#inv-money-icon { width: clamp(18px, 2.6vw, 28px); height: clamp(18px, 2.6vw, 28px); image-rendering: pixelated; }
+
+/* 物品栏网格容器：绝对定位到纹理的物品栏主区域（百分比，截图对齐后微调） */
+.inv-grid {
+  position: absolute;
+  display: grid;
+  gap: 0;
+}
+/* 主物品栏 27 格：9 列 × 3 行 —— 对齐纹理物品栏区域
+   坐标由 inventory.png 像素分析得出（槽位 Y≈830–1370）：top 50.5% / height 32.5% */
+#inv-grid-main {
+  left: 4%;
+  top: 50.5%;
+  width: 92%;
+  height: 32.5%;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+/* 快捷栏 9 格 —— 对齐纹理底部快捷栏（Y≈1410–1590）：top 85% / height 10.8% */
+#inv-grid-hotbar {
+  left: 4%;
+  top: 85%;
+  width: 92%;
+  height: 10.8%;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: 1fr;
+}
+
+/* 单个物品格子（MC 风格：深色半透明 + 像素内框） */
+.inv-slot {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.inv-slot::after {
+  content: "";
+  position: absolute; inset: 2px;
+  border: 1px solid rgba(0,0,0,0.45);
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.18), inset -1px -1px 0 rgba(0,0,0,0.35);
+  pointer-events: none;
+}
+.inv-slot img {
+  width: 78%; height: 78%;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  pointer-events: none;
+}
+.inv-slot .inv-count {
+  position: absolute;
+  right: 3px; bottom: 1px;
+  font-size: clamp(10px, 1.4vw, 14px);
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000, -1px 0 0 #000, 0 -1px 0 #000;
+  pointer-events: none;
+}
+.inv-slot .inv-price {
+  position: absolute;
+  left: 3px; top: 1px;
+  font-size: clamp(9px, 1.2vw, 12px);
+  font-weight: bold;
+  color: #ffd54a;
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+}
+.inv-slot.disabled { opacity: 0.45; cursor: not-allowed; }
+.inv-slot.buy:hover { background: rgba(120,200,120,0.18); }
+.inv-slot.sell:hover { background: rgba(230,180,80,0.18); }
+
+/* 日结算：右侧浮动、不阻塞、点击穿透 */
+#day-summary {
+  position: fixed;
+  top: 50%; right: 12px;
+  transform: translateY(-50%);
+  z-index: 60;
+  pointer-events: none; /* 允许点击地图 */
+  display: flex;
+  align-items: center;
+}
+#day-summary.panel-hidden { display: none; }
+#day-summary.panel-visible {
+  animation: slideInRight 0.35s ease;
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translate(40px, -50%); }
+  to   { opacity: 1; transform: translate(0, -50%); }
+}
+#summary-panel {
+  background: rgba(22, 33, 62, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  min-width: 240px;
+  max-width: 280px;
+  pointer-events: auto; /* 面板本身可点（如手动继续按钮） */
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+#summary-header {
+  font-size: 14px; font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.primary-btn { background: var(--accent) !important; color: #000 !important; font-weight: bold; }
+
+#summary-content {
+  margin-bottom: 8px;
+}
+#summary-next {
+  width: 100%; margin-top: 6px;
+  padding: 6px;
+  background: var(--accent-dim);
+  border: none; border-radius: 6px;
+  color: white; font-size: 12px; cursor: pointer;
+}
+#summary-next:hover { background: var(--accent); }
+.summary-row {
+  display: flex; justify-content: space-between;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.summary-total {
+  display: flex; justify-content: space-between;
+  padding: 6px 0; margin-top: 6px;
+  border-top: 2px solid var(--accent);
+  font-size: 14px; font-weight: bold;
+}
+.summary-levelup {
+  color: var(--accent);
+  font-size: 13px;
+  margin: 4px 0;
+}
