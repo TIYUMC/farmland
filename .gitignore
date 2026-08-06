@@ -1,10 +1,5 @@
-# --- 临时调试文件（非游戏代码，不纳入版本管理） ---
-_shop.png
-_v_debug.png
-assets_base64_temp.txt
-texture_preview.html
-
-# --- 系统/编辑器生成的垃圾 ---
+# 临时/调试文件
+_emoji_inventory.txt
+*.bak
 .DS_Store
 Thumbs.db
-*.swp

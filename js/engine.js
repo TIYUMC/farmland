@@ -1,6 +1,13 @@
 /**
  * engine.js — 核心引擎
- * 管理：时间流逝、日夜循环、季节、游戏帧循环
+ * 职责：时间流逝、日夜循环、季节推进、每日结算调度、游戏帧循环。
+ *
+ * ── 结构导航 ──
+ *   [状态]    day/season/year/hour/minute + running/paused/debugFast + hooks
+ *   ② 时间循环 start / _startTick / setDebugFast / pause / resume
+ *   ③ 日切     sleep / _endDay / nextDay
+ *   ④ 显示     getTimeString / getDateString
+ *   ⑤ 控制     stop
  */
 
 const Engine = {
@@ -23,12 +30,25 @@ const Engine = {
   onNewDay: null,         // callback(day, season, year)
   onDayEnd: null,         // callback() → 返回 { 是否保存并继续 }
 
+  // ─────────────────────────────────────────────
+  // ② 时间循环
+  // ─────────────────────────────────────────────
+  /** 重置游戏内时钟到每日起点（start 与 nextDay 共用，消除重复的 START_HOUR/minute=0 赋值） */
+  _resetClock() {
+    this.hour = DATA.START_HOUR;
+    this.minute = 0;
+  },
+
   /** 初始化并开始首个游戏日 */
   start() {
     this.running = true;
-    this.hour = DATA.START_HOUR;
-    this.minute = 0;
+    this._resetClock();
     this._startTick();
+  },
+
+  /** 清空当前计时器（若存在），避免多个 setTimeout 叠加（setDebugFast / pause / stop 共用） */
+  _clearTickTimer() {
+    if (this.tickTimer) { clearTimeout(this.tickTimer); this.tickTimer = null; }
   },
 
   /** 内部：每分钟滴答（调试快进时改为 1 秒 = 1 天） */
@@ -64,14 +84,14 @@ const Engine = {
   /** 切换调试快进（1 秒 = 1 天）。会干净地重启计时循环以切换模式。 */
   setDebugFast(on) {
     this.debugFast = !!on;
-    if (this.tickTimer) { clearTimeout(this.tickTimer); this.tickTimer = null; }
+    this._clearTickTimer();
     this._startTick();
   },
 
   /** 强制暂停时间（UI操作时） */
   pause() {
     this.paused = true;
-    if (this.tickTimer) { clearTimeout(this.tickTimer); this.tickTimer = null; }
+    this._clearTickTimer();
   },
   resume() {
     if (!this.paused) return;
@@ -79,13 +99,21 @@ const Engine = {
     if (this.running) this._startTick();
   },
 
+  // ─────────────────────────────────────────────
+  // ③ 日切
+  // ─────────────────────────────────────────────
+  /** 触发日结回调并推进到新的一天（_endDay 与 sleep 共用，消除重复的 onDayEnd 调用 + nextDay） */
+  _advanceDay() {
+    if (this.onDayEnd) this.onDayEnd();
+    this.nextDay();
+  },
+
   /** 一天结束 */
   _endDay() {
     // 先触发结算展示（读取当前日末状态，作为纯展示浮层）。
     // 不暂停、不停止走时：紧接着推进到新的一天，时间继续流逝，
     // 这样结算弹窗完全不阻塞操作、也不冻结时间。
-    if (this.onDayEnd) this.onDayEnd();
-    this.nextDay();
+    this._advanceDay();
   },
 
   /** 主动结束当天（B4 修复：玩家主动睡觉，等价于午夜自动结算） */
@@ -98,8 +126,7 @@ const Engine = {
       }
       return;
     }
-    if (this.onDayEnd) this.onDayEnd();
-    this.nextDay();
+    this._advanceDay();
   },
 
   /** 进入下一天 */
@@ -113,18 +140,21 @@ const Engine = {
         this.year++;
       }
     }
-    this.hour = DATA.START_HOUR;
-    this.minute = 0;
+    this._resetClock();
     this.paused = false;
     // 日结推进：作物生长 / 重置浇水 / 恢复体力。
     // 放这里保证“结算时时间继续走”——由 _endDay 直接调用，无需等玩家点“继续”。
     if (typeof Farm !== 'undefined') { Farm.dailyGrow(); Farm.resetWater(); Farm.dailyGrassGrow(); }
+    if (typeof TreeFarm !== 'undefined') { TreeFarm.dailyGrow(); TreeFarm.dailyGrassGrow(); } // 树场：树桩长回 + 补树 + 草随季节演化
     if (typeof Player !== 'undefined') { Player.restoreStamina(); }
     if (this.onNewDay) this.onNewDay(this.day, this.season, this.year);
     this.running = true;
     this._startTick();
   },
 
+  // ─────────────────────────────────────────────
+  // ④ 显示
+  // ─────────────────────────────────────────────
   /** 格式化时间显示 */
   getTimeString() {
     const h = this.hour;
@@ -145,9 +175,12 @@ const Engine = {
     return `${DATA.SEASONS[this.season]}${this.day}日 第${this.year}年`;
   },
 
+  // ─────────────────────────────────────────────
+  // ⑤ 控制
+  // ─────────────────────────────────────────────
   /** 停止引擎 */
   stop() {
     this.running = false;
-    if (this.tickTimer) { clearTimeout(this.tickTimer); this.tickTimer = null; }
+    this._clearTickTimer();
   },
 };

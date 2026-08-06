@@ -175,6 +175,10 @@ body {
   vertical-align: middle;
 }
 
+/* emoji 占位图标（斧头等暂无贴图的工具）：与工具栏 emoji 同款字号 */
+.tool-emoji { font-size: 20px; line-height: 1; }
+.inv-emoji { font-size: 22px; line-height: 1; }
+
 /* 手持物品槽：显示玩家当前「手里拿着」的工具/种子；空手时仅留一个空格子、不高亮 */
 /* 固定宽高，避免空手时内容塌陷导致边框收成椭圆/胶囊形 */
 #held-slot {

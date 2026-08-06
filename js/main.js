@@ -11,6 +11,7 @@
     await ASSETS.preload();
 
     Farm.init();
+    TreeFarm.init(); // 树场（独立子场景）初始化：随机预置树
     Player.init();
     UI.init();
 
@@ -31,6 +32,11 @@
     Engine.onNewDay = (day, season, year) => {
       // 结算（继续按钮）已处理了农活更新，这里只需渲染
       UI.render();
+      UI.markFarmDirty(); // 跨天后季节可能变化，重建静态层以更新秋日落叶堆
+      // 跨天若仍下雨，重新浇灌（Farm.resetWater 已清空当日 watered），让作物次日继续靠雨水生长
+      if (typeof UI !== 'undefined' && UI.isRaining && UI._rainWaterFields) UI._rainWaterFields();
+      // 跨天推进秋日落叶：每树3%概率、每天≤2格、总计≤10格（非秋季自动清空）
+      if (typeof UI !== 'undefined' && UI._spawnDailyLitter) UI._spawnDailyLitter();
     };
 
     // 一天结束（午夜24:00）
@@ -55,6 +61,7 @@
       switch (e.key) {
         case '1': _selectTool('hoe'); break;
         case '2': _selectTool('water'); break;
+        case '3': _selectTool('axe'); break;
         case 'b':
         case 'B':
           if (UI._shopOpen) UI.closeShop();
@@ -65,6 +72,14 @@
         case 'S': UI.openShop(); break;
         case 'z':
         case 'Z': Engine.sleep(); break; // B4 修复：z 键主动睡觉（立即结算并进入第二天）
+        case 't':
+        case 'T': _toggleTreeFarm(); break; // 主农场 ↔ 树场 切换
+        case 'l':
+        case 'L': // 调试：强制开启/关闭落叶（无视季节，便于查看粒子效果）
+          UI._forceAutumnLeaves = !UI._forceAutumnLeaves;
+          UI.markFarmDirty(); // 强制落叶开关变化需重建静态层（地面落叶堆）
+          UI.showStatus(UI._forceAutumnLeaves ? '🍂 落叶调试：强制开启' : '🍂 落叶调试：关闭', 1000);
+          break;
       }
     });
 
@@ -95,11 +110,16 @@
   function _selectTool(toolId) {
     const btn = document.querySelector(`.tool-btn[data-tool="${toolId}"]`);
     if (btn) { btn.click(); return; }
-    // 工具栏已不显示锄头/水桶：快捷键 1/2 直接装备（保持可玩）
-    if (toolId === 'hoe' || toolId === 'water') {
+    // 工具栏已不显示锄头/水桶/斧头：快捷键 1/2/3 直接装备（保持可玩）
+    if (toolId === 'hoe' || toolId === 'water' || toolId === 'axe') {
+      // 木斧头需先购买（30 金锭 + 5 小麦），未拥有则拦截提示
+      if (toolId === 'axe' && (!Player.ownedTools || !Player.ownedTools.axe)) {
+        UI.showStatus('先去商店 (B) 买把木斧头再砍树', 1500);
+        return;
+      }
       Player.selectTool(toolId);
       if (typeof UI !== 'undefined' && UI._updateHeldSlot) UI._updateHeldSlot();
-      const names = { hoe: '锄头', water: '水桶' };
+      const names = { hoe: '锄头', water: '水桶', axe: '斧头' };
       UI.showStatus(`选择工具：${names[toolId]}`, 800);
     }
   }
@@ -115,9 +135,13 @@
     anchor.parentNode.insertBefore(invBtn, anchor);
     // 背包按钮生成后才换贴图（JS 动态插的，_setToolbarIcons 来不及）
     const iconEl = invBtn.querySelector('.tool-icon');
-    if (iconEl && ASSETS.registry.bundle_filled) {
-      iconEl.innerHTML = `<img src="${ASSETS.registry.bundle_filled}" alt="背包" class="tool-icon-img">`;
-    }
+    if (iconEl) _setIconInner(iconEl, 'bundle_filled', '背包', 'tool-icon-img');
+  }
+
+  /** 主农场 ↔ 树场 切换（快捷键 T 共用；工具栏的树场按钮已移除，导航改由画布左上角箭头承担）。 */
+  function _toggleTreeFarm() {
+    if (typeof UI === 'undefined' || !UI.toggleScene) return;
+    UI.toggleScene();
   }
 
   /**
@@ -125,18 +149,6 @@
    * 仅替换部分匹配上的；不匹配则保留原 emoji（兜底）。
    */
   function _setToolbarIcons() {
-    const ICON_MAP = {
-      // 注：锄头/水桶已从工具栏移除，改由背包内点击装备（见 ui.js _makeSlot）
-    };
-
-    document.querySelectorAll('#toolbar .tool-btn').forEach(btn => {
-      const tool = btn.dataset.tool;
-      const assetKey = ICON_MAP[tool];
-      if (!assetKey) return;
-      const iconEl = btn.querySelector('.tool-icon');
-      _swapIcon(iconEl, assetKey, tool);
-    });
-
     // 商店按钮 → shop 纹理
     _setBtnIcon('btn-shop', 'shop');
     // 睡觉按钮 → 红床贴图（Red_Bed，来自桌面星露谷素材）
@@ -148,15 +160,21 @@
     _setHudIcon('hud-ico-stamina',  'food_full');
     _setHudIcon('hud-ico-time',  'time');
     _setHudIcon('hud-ico-money', 'money');
-    _setHudIcon('hud-ico-seeds',  'wheat_seeds');
-    _setHudIcon('hud-ico-inventory', 'bundle_filled');
+  }
+
+  /** 把图标换成贴图：注册表里没有该贴图就不动（保留原 emoji 兜底），成功返回 true。
+   *  cls 留空则不写 class 属性（HUD 图标用），否则写 class="cls"。 */
+  function _setIconInner(el, assetKey, alt, cls) {
+    if (!el || !ASSETS.registry[assetKey]) return false;
+    const clsAttr = cls ? ` class="${cls}"` : '';
+    el.innerHTML = `<img src="${ASSETS.registry[assetKey]}" alt="${alt}"${clsAttr}>`;
+    return true;
   }
 
   /** 把图标换成贴图，同时保留原本在 .tool-icon 内的 .tool-badge（如种子价格标签） */
   function _swapIcon(iconEl, assetKey, alt) {
-    if (!iconEl || !ASSETS.registry[assetKey]) return;
     const badge = iconEl.querySelector('.tool-badge');
-    iconEl.innerHTML = `<img src="${ASSETS.registry[assetKey]}" alt="${alt}" class="tool-icon-img">`;
+    if (!_setIconInner(iconEl, assetKey, alt, 'tool-icon-img')) return;
     if (badge) iconEl.appendChild(badge);
   }
 
@@ -168,11 +186,10 @@
     _swapIcon(iconEl, assetKey, btnId);
   }
 
-  /** 把指定 id 的 hud-label span 内部内容替换成贴图 */
+  /** 把指定 id 的 hud-label span 内部内容替换成贴图（无 class） */
   function _setHudIcon(hudId, assetKey) {
     const el = document.getElementById(hudId);
-    if (!el || !ASSETS.registry[assetKey]) return;
-    el.innerHTML = `<img src="${ASSETS.registry[assetKey]}" alt="${hudId}">`;
+    _setIconInner(el, assetKey, hudId, '');
   }
 
   // 启动
