@@ -255,7 +255,7 @@ const UI = {
     // 视觉下雨（纯画面，不影响玩法）：雨滴用「水」贴图截取的一段；按天气系统随机下雨
     // 开局随机：一半几率直接下雨、一半晴（用户要求「不要开局就下雨，随机」）；随后 0.5~3 天一场、间隔 2~10 天 自动循环
     this._dayHours = DATA.END_HOUR - DATA.START_HOUR;        // 一天 = 18 游戏小时
-    this._weatherPhase = (Math.random() < 0.5) ? 'rain' : 'clear';   // 当前阶段：rain / clear（开局随机）
+    this._weatherPhase = (Math.random() < 0.01) ? 'rain' : 'clear';   // 当前阶段：rain / clear（开局随机）
     this._weatherTargetH = this._totalGameHours() + (this._weatherPhase === 'rain' ? this._randRainDurDays() : this._randGapDays()) * this._dayHours;
     this.isRaining = (this._weatherPhase === 'rain');         // 与阶段同步（render 据此画雨）
     if (this.isRaining) this._rainWaterFields();             // 开局即下雨则立刻浇灌已耕地
@@ -263,7 +263,7 @@ const UI = {
     this._ripples = [];                                      // 雨滴落地涟漪数组（空，下雨时生成）
     this._grassShakes = [];                                  // 草丛被雨打颤数组（空，下雨时生成）
     this._fallingLeaves = [];                                // 秋日落叶数组（仅秋季生成）
-    this._litterCells = [];                                 // 秋日地面落叶堆：按天累积的格集合（每树3%概率/每天≤2/总计≤10）
+    this._litterGrid = null;                                // 秋日地面落叶堆：每格0~4份(每份1/4格)二维计数 grid；null=未初始化/已清空
     this._litterTintCache = null;                           // 地面落叶堆棕色染色缓存
     this._leafTint = {};                                     // 落叶染色缓存（source-atop 纯秋色）
     this._leafTick = 0;                                      // 落叶飘落动画帧推进计时
@@ -685,52 +685,84 @@ const UI = {
     return img;
   },
 
-  /** 在单格 (x,y,cs) 铺一整张落叶堆贴图（leaf_litter，棕色染色、保留纹理），对齐整格——
-   *  用户要求：每格一整张贴图、对准格子，不缩小散落成一团糊糊。 */
-  _drawLitterCell(ctx, x, y, cs) {
+  /** 确保落叶计数 grid 存在（每格 0~4 份，每份 1/4 格）。null 时按全农场尺寸建全 0 数组。 */
+  _ensureLitterGrid() {
+    if (!this._litterGrid) {
+      this._litterGrid = Array.from({ length: DATA.FARM.ROWS }, () => Array(DATA.FARM.COLS).fill(0));
+    }
+    return this._litterGrid;
+  },
+  /** 在单格 (x,y,cs) 按 count(0~4) 份绘制落叶：每份占 1/4 格，固定四象限顺序（左上→右上→左下→右下）铺小落叶贴图。 */
+  _drawLitterCell(ctx, x, y, cs, count) {
     const img = this._litterTinted();
     if (!img) return;
-    ctx.imageSmoothingEnabled = true;   // 整张铺满整格，平滑避免硬边
-    ctx.drawImage(img, x, y, cs, cs);
+    ctx.imageSmoothingEnabled = true;
+    const h = cs / 2;
+    const qx = [x, x + h, x, x + h];
+    const qy = [y, y, y + h, y + h];
+    for (let k = 0; k < count && k < 4; k++) {
+      ctx.drawImage(img, qx[k], qy[k], h, h);   // 整张 leaf_litter 缩小到 1/4 格，保留纹理
+    }
   },
 
-  /** 秋日落叶每日生成（用户规则）：每棵树 3% 概率在「树旁非树格」落一堆；
-   *  每天至多 2 格、总计至多 10 格。非秋季清空（落叶是秋季专属，每秋独立、10 格上限才有意义）。 */
+  /** 秋日落叶每日生成 / 冬季消失（用户规则，单位=1份=1/4格）：
+   *  秋季：每树 3% 概率 → 相邻非树非草格 +1 份（该格满 4 份则不计）；每天至多 2 份、全图至多 10 个格有落叶（每格0~4份）。
+   *  冬季：地上枯叶随机消失，每天至多 2 份（随机抽有落叶的格 -1）。春/夏：清空。 */
   _spawnDailyLitter() {
-    if (!this._isAutumn()) { this._litterCells = []; return; }   // 非秋季：清空累积
-    if (this._litterCells.length >= 10) return;                  // 总计已达上限
+    const season = Engine.season;
+    const ROWS = DATA.FARM.ROWS, COLS = DATA.FARM.COLS;
+    // 冬季：枯叶随机消失，每天至多 2 份
+    if (season === 3) {
+      if (!this._litterGrid) return;
+      for (let i = 0; i < 2; i++) {
+        const cells = [];
+        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (this._litterGrid[r][c] > 0) cells.push([r, c]);
+        if (!cells.length) break;
+        if (Math.random() < 0.5) {
+          const [r, c] = cells[(Math.random() * cells.length) | 0];
+          this._litterGrid[r][c]--;
+        }
+      }
+      return;
+    }
+    if (!this._isAutumn()) { this._litterGrid = null; return; }   // 春/夏：清空
+    const grid = this._ensureLitterGrid();
+    // 统计已占用格数（>0 的格）
+    let occupied = 0;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c] > 0) occupied++;
+    let dayParts = 0;                                            // 当天已落份数（上限 2）
     // 收集所有树格
     const trees = [];
-    for (let r = 0; r < DATA.FARM.ROWS; r++) {
-      for (let c = 0; c < DATA.FARM.COLS; c++) {
-        if (TreeFarm.trees[r] && TreeFarm.trees[r][c]) trees.push([r, c]);
-      }
-    }
-    let dayCount = 0;                                            // 当天已落格数（上限 2）
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (TreeFarm.trees[r] && TreeFarm.trees[r][c]) trees.push([r, c]);
     for (let i = 0; i < trees.length; i++) {
-      if (dayCount >= 2) break;                                  // 每天至多 2 格
-      if (this._litterCells.length >= 10) break;                 // 总计至多 10 格
+      if (dayParts >= 2) break;                                  // 每天至多 2 份
       const [r, c] = trees[i];
       if (Math.random() >= 0.03) continue;                       // 每棵树 3% 命中
-      // 收集「相邻非树且尚未落叶」的格
+      // 收集「相邻非树、非绿黄草、未满 4 份」的格
       const neigh = [];
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           if (dr === 0 && dc === 0) continue;
           const nr = r + dr, nc = c + dc;
-          if (nr < 0 || nr >= DATA.FARM.ROWS || nc < 0 || nc >= DATA.FARM.COLS) continue;
+          if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
           if (TreeFarm.trees[nr] && TreeFarm.trees[nr][nc]) continue;                       // 相邻是树则跳过
-          if (this._litterCells.some(([lr, lc]) => lr === nr && lc === nc)) continue;       // 已有落叶则跳过
+          const gr = (TreeFarm.grass && TreeFarm.grass[nr] && TreeFarm.grass[nr][nc]) || 0;
+          if (gr >= 1) continue;                                 // 绿(1)/黄(2)草格跳过
+          if (grid[nr][nc] >= 4) continue;                       // 该格已满 4 份
           neigh.push([nr, nc]);
         }
       }
-      if (neigh.length) {
-        const [nr, nc] = neigh[(Math.random() * neigh.length) | 0];
-        const gr = (TreeFarm.grass && TreeFarm.grass[nr] && TreeFarm.grass[nr][nc]) || 0;
-        if (gr >= 1) continue;                                   // 生成在绿(1)/黄(2)草上 → 该次生成无效
-        this._litterCells.push([nr, nc]);
-        dayCount++;
-      }
+      if (!neigh.length) continue;
+      const [nr, nc] = neigh[(Math.random() * neigh.length) | 0];
+      if (TreeFarm.trees[nr] && TreeFarm.trees[nr][nc]) continue;   // 生成在树格上 → 无效
+      const gr2 = (TreeFarm.grass && TreeFarm.grass[nr] && TreeFarm.grass[nr][nc]) || 0;
+      if (gr2 >= 1) continue;                                    // 绿/黄草上 → 无效
+      if (grid[nr][nc] >= 4) continue;                           // 满 4 份 → 无效
+      const wasEmpty = grid[nr][nc] === 0;
+      if (wasEmpty && occupied >= 10) continue;                  // 总共至多 10 个格有落叶（新格受限）
+      grid[nr][nc]++;
+      if (wasEmpty) occupied++;
+      dayParts++;
     }
   },
 
@@ -1319,11 +1351,16 @@ const UI = {
           this._drawWoodOrFill(ctx, 'rooted_dirt', x, y, cs, cs, true);
         }
     });
-    // 第三遍：地面落叶堆按「每日累积」集合绘制（秋季每树3%概率，每天≤2格，总计≤10格）
-    if (this._isAutumn()) {
-      for (let i = 0; i < this._litterCells.length; i++) {
-        const [r, c] = this._litterCells[i];
-        this._drawLitterCell(ctx, c * cs, r * cs, cs);
+    // 第三遍：地面落叶堆按「每格0~4份」grid 绘制；秋季生成、冬季逐日消失（故两季都渲染）
+    if (this._isAutumn() || Engine.season === 3) {
+      const grid = this._litterGrid;
+      if (grid) {
+        for (let r = 0; r < DATA.FARM.ROWS; r++) {
+          for (let c = 0; c < DATA.FARM.COLS; c++) {
+            const n = grid[r][c];
+            if (n > 0) this._drawLitterCell(ctx, c * cs, r * cs, cs, n);
+          }
+        }
       }
     }
     // 第二遍画树：让向上溢出的树冠盖在相邻格之上，形成茂密感（先画下面行的树，上面的树冠自然叠在前）
@@ -1550,12 +1587,17 @@ const UI = {
   // ⑧ 田间动作（锄 / 浇 / 种 / 收 / 砍树）
   // ─────────────────────────────────────────────
   // ── 农场/树场动作：_startBusy 的 onEffect / onDone 具名化（原内联箭头整体搬出，行为不变）──
-  _waterEffect(row, col) {
-    const res = this._tryAction(DATA.TOOL_COST.water, () => Farm.water(row, col));
+  // 同构 effect 骨架（water/clearGrass/toDirt 共用）：扣体力 → 世界操作 → 成功则刷脏+粒子
+  _actionEffect(row, col, cost, worldFn, burst) {
+    const res = this._tryAction(cost, () => worldFn(row, col));
     if (this._markFarmDirtyIfOk(res)) {
-      this._spawnBurst(row, col, { colors: ['#6bb6ff', '#9fd4ff', '#bfe8ff'], shape: 'rect', count: 10, speed: 70, gravity: 320, dir: -Math.PI / 2, spread: Math.PI * 1.3 });
+      this._spawnBurst(row, col, burst);
     }
     return res;
+  },
+  _waterEffect(row, col) {
+    return this._actionEffect(row, col, DATA.TOOL_COST.water, (r, c) => Farm.water(r, c),
+      { colors: ['#6bb6ff', '#9fd4ff', '#bfe8ff'], shape: 'rect', count: 10, speed: 70, gravity: 320, dir: -Math.PI / 2, spread: Math.PI * 1.3 });
   },
   _waterDone(res) {
     if (res !== 'ok') {
@@ -1604,11 +1646,8 @@ const UI = {
     this.showStatus(`🔨 收获 ${def.name}×${res.count}${extra}`, 1500);
   },
   _clearGrassEffect(row, col) {
-    const res = this._tryAction(DATA.TOOL_COST.hoe, () => Farm.clearGrass(row, col));
-    if (this._markFarmDirtyIfOk(res)) {
-      this._spawnBurst(row, col, { colors: ['#7bbf4a', '#9bd45a', '#cfe89a'], count: 10, speed: 60, gravity: 200, dir: -Math.PI / 2, spread: Math.PI * 1.4 });
-    }
-    return res;
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.clearGrass(r, c),
+      { colors: ['#7bbf4a', '#9bd45a', '#cfe89a'], count: 10, speed: 60, gravity: 200, dir: -Math.PI / 2, spread: Math.PI * 1.4 });
   },
   _clearGrassDone(res, gstate) {
     if (res !== 'ok') { this.showStatus('❌ 无法除草', 800); return; }
@@ -1629,11 +1668,8 @@ const UI = {
     this.showStatus('🔨 耕地完成', 600);
   },
   _toDirtEffect(row, col) {
-    const res = this._tryAction(DATA.TOOL_COST.hoe, () => Farm.toDirt(row, col));
-    if (this._markFarmDirtyIfOk(res)) {
-      this._spawnBurst(row, col, { colors: ['#8a5a2b', '#a9763c', '#6b4423'], count: 12, speed: 75, gravity: 300 });
-    }
-    return res;
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.toDirt(r, c),
+      { colors: ['#8a5a2b', '#a9763c', '#6b4423'], count: 12, speed: 75, gravity: 300 });
   },
   _toDirtDone(res, cell) {
     if (this._warnIfNotOk(res, cell)) return;
