@@ -112,6 +112,7 @@ const TreeFarm = {
       if (this.trees[r][c]) continue;
       if (pred && !pred(r, c)) continue;
       this.trees[r][c] = { stage: 'grown', days: 0 };
+      this._clearFrost(r, c);                  // 新长成的树：霜白从 0 起
       return true;
     }
     return false;
@@ -120,6 +121,13 @@ const TreeFarm = {
   // ─────────────────────────────────────────────
   // ③ 交互
   // ─────────────────────────────────────────────
+  /** 清掉某格的树冠霜白残留。砍树/种树时是「新树实体」，不应继承上一棵被砍树的白度
+   *  （_updateTreeFrost 只在下雪帧才清无树格，若「砍→雪停→新树长出来」间隙没下雪，残留会传给新树）。
+   *  仅在冬季霜白网格存在时才动，避免非冬季误建霜白网格。 */
+  _clearFrost(r, c) {
+    if (typeof UI !== 'undefined' && UI._treeFrost) UI._treeFrost[r * 1000 + c] = 0;
+  },
+
   /** 砍树：砍倒大树掉落木头/树苗（树场专用），返回 { ok, wood, saplings } 或 { ok:false, reason }。
    *  wood 取自 DATA.TREE；saplings 为 1~3 个「树苗」(DATA.TREE.saplingYield*)，可种回树场形成循环。 */
   chop(row, col) {
@@ -131,6 +139,8 @@ const TreeFarm = {
     const wood = this._randInt(T.woodYieldMin, T.woodYieldMax);
     const saplings = this._randInt(T.saplingYieldMin, T.saplingYieldMax);
     this.trees[row][col] = null;
+    this._clearFrost(row, col);                // 清掉被砍树的霜白残留（新树不应继承）
+    if (typeof Quest !== 'undefined') Quest.trigger('chop'); // 任务书：樵夫/伐木工会
     return { ok: true, wood, saplings };
   },
 
@@ -140,15 +150,37 @@ const TreeFarm = {
     const e = this._requireEmptyCell(row, col);
     if (e) return e;
     this.trees[row][col] = { stage: 'sapling', days: 0 };
+    this._clearFrost(row, col);                // 新树苗：霜白从 0 起
+    if (typeof Quest !== 'undefined') Quest.trigger('plantSapling'); // 任务书：林场主
     return { ok: true };
   },
 
-  /** 树场锄地：树场根系太密，锄头无法耕成耕地，只能翻出「缠根泥土」(rooted_dirt) 地表（纯视觉状态）。 */
+  /** 除草：把有草(绿/黄)的地面清成「普通草方块」(grass=0, 非裸土)。无草时返回 'no_grass'。
+   *  与主农场 Farm.clearGrass 对称，使树场锄头逻辑与主农场同步（先除草才能翻地）。 */
+  clearGrass(row, col) {
+    if (!this._inBounds(row, col)) return 'out_of_bounds';
+    const g = (this.grass[row] && this.grass[row][col]) || 0;
+    if (g !== 1 && g !== 2) return 'no_grass';
+    this.grass[row][col] = 0;
+    if (this.bare[row]) this.bare[row][col] = false; // 变回普通草方块（非裸土）
+    return 'ok';
+  },
+
+  /** 树场锄地：树场根系太密，锄头无法耕成耕地，只能翻出「缠根泥土」(rooted_dirt) 地表（纯视觉状态）。
+   *  带概率：根系太密，只有 ROOT_CHANCE 概率成功翻出缠根泥土；否则只是锄了一下没翻动(root_too_dense)，可重试。
+   *  不再像旧版「一律变缠根泥土」——这是真实的随机逻辑，而非单纯贴图替换。 */
   till(row, col) {
     const e = this._requireEmptyCell(row, col);
     if (e) return e;
-    this.rooted[row][col] = true;
-    return { ok: true };
+    const g = (this.grass[row] && this.grass[row][col]) || 0;
+    if (g === 1 || g === 2) return { ok: false, reason: 'has_grass' };   // 有草先除草（与主农场一致）
+    if (this.getRootedAt(row, col)) return { ok: false, reason: 'already_rooted' };
+    const chance = (DATA.TREEFARM.ROOT_CHANCE != null) ? DATA.TREEFARM.ROOT_CHANCE : 0.5;
+    if (Math.random() < chance) {
+      this.rooted[row][col] = true;
+      return { ok: true };
+    }
+    return { ok: false, reason: 'root_too_dense' };
   },
 
   getRootedAt(r, c) { return !!(this.rooted[r] && this.rooted[r][c]); },
@@ -163,7 +195,7 @@ const TreeFarm = {
     this._forEachCell((t, r, c) => {
       if (t && t.stage === 'sapling') {
         t.days = (t.days || 0) + 1;
-        if (t.days >= sGrow) this.trees[r][c] = { stage: 'grown', days: 0 };
+        if (t.days >= sGrow) { this.trees[r][c] = { stage: 'grown', days: 0 }; this._clearFrost(r, c); } // 长成的树：霜白从 0 起
       }
       if (this.trees[r][c]) count++;
     });
