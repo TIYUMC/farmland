@@ -20,7 +20,6 @@
 UI.openShop = function() {
   if (this._shopOpen) return;
   this._shopOpen = true;
-  Engine.pause();
   if (this._inventoryOpen) this.closeInventory(); // 打开商店时收起背包
   this._trades = this._buildTrades();
   this._shopSel = this._trades.length ? this._trades[0].id : null;
