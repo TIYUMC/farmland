@@ -33,8 +33,8 @@
       // 结算（继续按钮）已处理了农活更新，这里只需渲染
       UI.render();
       UI.markFarmDirty(); // 跨天后季节可能变化，重建静态层以更新秋日落叶堆
-      // 跨天若仍下雨，重新浇灌（Farm.resetWater 已清空当日 watered），让作物次日继续靠雨水生长
-      if (typeof UI !== 'undefined' && UI.isRaining && UI._rainWaterFields) UI._rainWaterFields();
+      // 跨天若仍下雨，重新浇灌（Farm.resetWater 已清空当日 watered），让作物次日继续靠雨水生长；冬天是雪不浇
+      if (typeof UI !== 'undefined' && UI.isRaining && UI._rainWaterFields && typeof UI._isWinter === 'function' && !UI._isWinter()) UI._rainWaterFields();
       // 跨天推进秋日落叶：每树3%概率、每天≤2格、总计≤10格（非秋季自动清空）
       if (typeof UI !== 'undefined' && UI._spawnDailyLitter) UI._spawnDailyLitter();
     };
@@ -74,12 +74,6 @@
         case 'Z': Engine.sleep(); break; // B4 修复：z 键主动睡觉（立即结算并进入第二天）
         case 't':
         case 'T': _toggleTreeFarm(); break; // 主农场 ↔ 树场 切换
-        case 'l':
-        case 'L': // 调试：强制开启/关闭落叶（无视季节，便于查看粒子效果）
-          UI._forceAutumnLeaves = !UI._forceAutumnLeaves;
-          UI.markFarmDirty(); // 强制落叶开关变化需重建静态层（地面落叶堆）
-          UI.showStatus(UI._forceAutumnLeaves ? '🍂 落叶调试：强制开启' : '🍂 落叶调试：关闭', 1000);
-          break;
       }
     });
 
@@ -94,7 +88,7 @@
     const sleepBtn = document.getElementById('btn-sleep');
     if (sleepBtn) sleepBtn.addEventListener('click', () => Engine.sleep());
 
-    // 调试快进按钮（临时功能）：开启后 1 秒 = 1 天，方便快速测试作物生长/时间流逝
+    // 调试快进按钮（临时功能）：开启后 0.5 秒 = 1 天，方便快速测试作物生长/时间流逝
     const debugBtn = document.getElementById('btn-debug');
     if (debugBtn) {
       debugBtn.addEventListener('click', () => {
@@ -102,9 +96,32 @@
         Engine.setDebugFast(on);
         debugBtn.classList.toggle('debug-on', on);
         if (on && typeof UI.closeSummary === 'function') UI.closeSummary();
-        UI.showStatus(on ? '⚡ 调试快进：1 秒 = 1 天' : '调试快进已关闭', 1200);
+        UI.showStatus(on ? '⚡ 调试快进：0.5 秒 = 1 天' : '调试快进已关闭', 1200);
       });
     }
+
+    // 背包内顶部操作行：商店 / 睡觉 / 调试（按钮已移入背包 GUI，逻辑同工具栏原按钮）
+    const invShop = document.getElementById('btn-inv-shop');
+    if (invShop) invShop.addEventListener('click', () => {
+      UI.closeInventory();                 // 关背包再开商店，避免两个 overlay 叠加
+      if (UI._shopOpen) UI.closeShop(); else UI.openShop();
+    });
+    const invSleep = document.getElementById('btn-inv-sleep');
+    if (invSleep) invSleep.addEventListener('click', () => {
+      UI.closeInventory();                 // 关背包后睡觉（结算进入第二天）
+      Engine.sleep();
+    });
+    const invDebug = document.getElementById('btn-inv-debug');
+    if (invDebug) invDebug.addEventListener('click', () => {
+      const on = !Engine.debugFast;
+      Engine.setDebugFast(on);
+      invDebug.classList.toggle('debug-on', on);
+      if (on && typeof UI.closeSummary === 'function') UI.closeSummary();
+      UI.showStatus(on ? '⚡ 调试快进：0.5 秒 = 1 天' : '调试快进已关闭', 1200);
+    });
+    // 任务书入口：背包内紫色书按钮（调试右边），点开/关任务书；关闭后回到背包
+    const invBook = document.getElementById('btn-inv-book');
+    if (invBook) invBook.addEventListener('click', () => UI.openQuest());
   }
 
   function _selectTool(toolId) {
@@ -155,6 +172,11 @@
     _setBtnIcon('btn-sleep', 'red_bed');
     // 调试按钮 → Command_Block 贴图（用户桌面素材，已登记进 registry）
     _setBtnIcon('btn-debug', 'command_block');
+    // 背包内顶部操作行三按钮（商店 / 睡觉 / 调试）同款贴图
+    _setBtnIcon('btn-inv-shop', 'shop');
+    _setBtnIcon('btn-inv-sleep', 'red_bed');
+    _setBtnIcon('btn-inv-debug', 'command_block');
+    _setBtnIcon('btn-inv-book', 'book_purple');
 
     // HUD 图标换贴图
     _setHudIcon('hud-ico-stamina',  'food_full');
