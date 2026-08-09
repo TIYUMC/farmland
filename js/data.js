@@ -12,6 +12,7 @@
  *   [资源树]    TREE
  *   [树场]      TREEFARM
  *   [商店物品]  SHOP_ITEMS
+ *   [任务书]    QUESTS  (Advancement 进度树：数据驱动，接游戏事件自动点亮)
  */
 const DATA = {
   // === 季节系统 ===
@@ -98,6 +99,8 @@ const DATA = {
     MAX_TREES: 10,        // 树木上限（防通胀：木头产能封顶）→ 约 1/12 格（12×10=120 格），用户要求从 20 再减半到 10
     INIT_TREES: 6,        // 开局预置树数（< 上限，留出每日补树空间）；用户要求初始 6 棵
     REFILL_PER_DAY: 3,    // 每日随机补树上限（控率：防瞬时刷爆 / 长期枯竭）
+    ROOT_CHANCE: 0.5,     // 树场锄头翻出「缠根泥土」的成功概率（根系太密，只有此概率成功；失败静默可重试）
+    FROST_BUDGET_PER_SNOW: 8, // 一场雪的「树叶白化」共享额度（单位=1/8 档）：全场零和，随机撒给还没满的树；某树吃满 8 档则本场其余树没机会。想更白就调大
   },
 
   // === 商店物品（同时驱动「买种子」与「卖作物」两项交易）===
@@ -109,5 +112,75 @@ const DATA = {
     { id: 'axe',         name: '木斧头', cost: 30, type: 'tool',
       costItems: [{ id: 'wheat', count: 5 }],
       desc: '砍树必备 · 30金锭 + 5小麦' },
+  ],
+
+  // === 花朵物种注册表（数组下标+1 = Farm.flowers[r][c] 的花种编号；0=无花）===
+  // key    : ASSETS.registry 贴图键（必须已注册，否则渲染裂图）
+  // name   : 中文名（锄花提示、调试用）
+  // colors : 锄花时 _spawnBurst 的花瓣粒子配色（取自该花本身的颜色）
+  // 扩展花种：往数组**尾部追加**一项即可，farm.js / ui.js 都不用改（切勿插在中间——
+  //          下标即存档里的花种编号，中间插入会让已有花朵变成别的品种）。
+  FLOWERS: [
+    { key: 'Allium',             name: '大花葱',       colors: ['#c77dff', '#e0aaff', '#d8b4f0', '#ffffff'] }, // 球状紫花
+    { key: 'Azure_Bluet',        name: '蓝花美耳草',   colors: ['#ffffff', '#dbeeff', '#b8dcff', '#f2e08a'] }, // 白瓣蓝晕·黄蕊
+    { key: 'Cornflower',         name: '矢车菊',       colors: ['#4a6bd6', '#6d8ce8', '#9db4f2', '#ffffff'] }, // 矢车菊蓝
+    { key: 'Dandelion',          name: '蒲公英',       colors: ['#ffd93d', '#ffe873', '#f7c331', '#ffffff'] }, // 明黄
+    { key: 'Lily_Of_The_Valley', name: '铃兰',         colors: ['#ffffff', '#f0f7ee', '#dcecd8', '#a8cfa0'] }, // 白铃·绿茎
+    { key: 'Orange_Tulip',       name: '橙郁金香',     colors: ['#ff8c00', '#ffae42', '#ffd28a', '#fff0e0'] }, // 橙瓣·奶白晕
+    { key: 'Oxeye_Daisy',        name: '牛眼雏菊',     colors: ['#ffffff', '#fafafa', '#f5d76e', '#f0c040'] }, // 白瓣·黄心
+    { key: 'Peony',              name: '牡丹',         colors: ['#ff8fb1', '#ffb3c6', '#ffd6e0', '#e75a86'] }, // 粉牡丹
+    { key: 'Pink_Tulip',         name: '粉郁金香',     colors: ['#ff9ec4', '#ffb8d6', '#ffd9e8', '#ffffff'] }, // 粉瓣·白晕
+    { key: 'Poppy',              name: '虞美人',       colors: ['#e63946', '#ff5a5f', '#ff8a8f', '#c1121f'] }, // 红虞美人
+    { key: 'Red_Tulip',          name: '红郁金香',     colors: ['#d62828', '#e63946', '#ff6b6b', '#9d0208'] }, // 红瓣郁金香
+    { key: 'White_Tulip',        name: '白郁金香',     colors: ['#ffffff', '#f5f5f0', '#e8e8e0', '#dcdccf'] }, // 白瓣·浅灰晕
+  ],
+
+  // === 任务书（Advancement 进度树，数据驱动）===
+  // ui.js._renderQuest 读此数组渲染；Quest 模块按 track 自动点亮（接游戏事件）。
+  // track.k:
+  //   'always'            开局即完成（根节点）
+  //   累计事件名          配合 n=阈值：till/plant/harvest/chop/plantSapling/wood/earn
+  //   'ownTool'+tool      实时读 Player.ownedTools[tool]
+  // 坐标 x/y 为节点圆心(px)。布局：每个分类一条水平直线（节点间距 DX=150，y 统一 320，无分叉），
+  // 由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现（参考我的世界进度树）。详见下方「设计原则」。
+  // cat: 分类键，对应 QUEST_TABS 的 id。core=主线；farm=种植支线；forage=采集支线；tools=工具支线（均单线）。
+  // 设计原则（2026-08-09 重构）：
+  //   1) 成链首尾呼应：每个分类排成一条水平直线，父节点 = 上一节点，前后连贯讲一个完整故事；
+  //      顶端 root(初来乍到) 派生出 种植/采集/工具 三条支线，主线从「空手抵达」到「仓廪实」收尾呼应。
+  //   2) 难度单调递增：同一指标阈值只增不减，不同指标按「生产流水线」顺序递进（开垦→播种→收获→售卖），
+  //      绝不出现「一会儿简单一会儿难」的回退。
+  //   3) 每个节点都有意义：参考 FTB 进度，删去同指标递增刷数节点(开垦10/30、砍树10/25、收获200等)与 challenge 奖励节点，仅留清晰里程碑（首达成/阶段跃迁）。
+  //   4) 布局：每分类一条水平直线，节点间距 DX=150，y 统一 320（由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现）。
+  QUESTS: [
+    // —— 核心玩法（主线：空手抵达 → 开垦 → 安家 → 收获 → 置办农具 → 林间初探 → 致富；参考 FTB 进度，仅留区分度里程碑 + 每支线的「网关」前置 ——
+    { id:'root',    parent:null,    x:80,   y:320, icon:'quest_root_hoe', title:'初来乍到', desc:'欢迎来到 Farmland',            cat:'core', track:{k:'always'} },
+    { id:'a1',      parent:'root',  x:230,  y:320, icon:'dirt',          title:'开垦者',   desc:'开垦 1 块耕地',               cat:'core', track:{k:'till',  n:1} },
+    // —— 网关：完成即解锁「种植」支线 ——
+    { id:'g_farm',  parent:'a1',    x:380,  y:320, icon:'wheat_seeds',   title:'安家落户', desc:'播下第一粒种子，安顿下来 —— 种植支线已开启', cat:'core', track:{k:'plant', n:1} },
+    { id:'m3',      parent:'g_farm',x:530,  y:320, icon:'wheat_seeds',          title:'夏收',     desc:'累计收获 100 份作物',          cat:'core', track:{k:'harvest', n:100} },
+    // —— 网关：完成即解锁「工具」支线 ——
+    { id:'g_tools', parent:'m3',    x:680,  y:320, icon:'wooden_axe',    title:'置办农具', desc:'购得第一件工具(木斧) —— 工具支线已开启',     cat:'core', track:{k:'ownTool', tool:'axe'} },
+    // —— 网关：完成即解锁「采集」支线 ——
+    { id:'g_forage',parent:'g_tools',x:830, y:320, icon:'oak_log',       title:'林间初探', desc:'踏入林地砍倒第一棵树 —— 采集支线已开启', cat:'core', track:{k:'chop', n:1} },
+    { id:'m4',      parent:'g_forage',x:980,y:320, icon:'money',        title:'丰衣足食', desc:'累计赚取 300 金',              cat:'core', track:{k:'earn',  n:300} },
+    // —— 种植支线（种 → 收 → 卖）——
+    { id:'a1a',  parent:'root', x:80,   y:320, icon:'wheat_seeds', title:'播种者',   desc:'种下 1 颗种子',          cat:'farm', track:{k:'plant', n:1} },
+    { id:'a1b',  parent:'a1a', x:230,  y:320, icon:'wheat_seeds',        title:'丰收季',   desc:'累计收获 50 份作物',     cat:'farm', track:{k:'harvest', n:50} },
+    { id:'a1c',  parent:'a1b', x:380,  y:320, icon:'money',       title:'小富即安', desc:'累计赚取 200 金',        cat:'farm', track:{k:'earn',  n:200} },
+    // —— 采集支线（砍倒第一棵树，由主线「林间初探」解锁）——
+    { id:'b1',   parent:'root', x:80,   y:320, icon:'oak_log',     title:'樵夫', desc:'砍倒 1 棵树',      cat:'forage', track:{k:'chop',  n:1} },
+    // —— 工具支线（拥有第一件工具，由主线「置办农具」解锁）——
+    { id:'c1',   parent:'root', x:80,   y:320, icon:'wooden_axe',  title:'工匠入门', desc:'购得第一件工具(木斧头)', cat:'tools',  track:{k:'ownTool', tool:'axe'} },
+  ],
+  // 选项卡（分类页签）。id 与 QUESTS[].cat 对应；
+  // tab/selected 为选项卡底图贴图 key；icon 为该分类在选项卡上的代表物贴图 key。
+  // 渲染时按数组次序拼成 Above_Left / Above_Middle×(N-2) / Above_Right 的小方格条。
+  QUEST_TABS: [
+    { id:'core',   label:'核心玩法', icon:'quest_root_hoe', tab:'advancement_tab_above_left',  selected:'advancement_tab_above_left_selected' },
+    // 支线选项卡：prereq 指向主线(核心)的「网关」任务 id，未完成前选项卡显示锁且不可点开；
+    // 每个支线在主线各有一个专属网关(g_farm/g_forage/g_tools)，完成即解锁对应支线，其 desc 写明解锁提示。
+    { id:'farm',   label:'种植',     icon:'wheat_seeds', tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_farm' },
+    { id:'forage', label:'采集',     icon:'oak_log',     tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_forage' },
+    { id:'tools',  label:'工具',     icon:'wooden_axe',  tab:'advancement_tab_above_right',  selected:'advancement_tab_above_right_selected', prereq:'g_tools' },
   ],
 };
