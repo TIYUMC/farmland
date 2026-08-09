@@ -95,7 +95,9 @@ body {
 .shop-item.is-draggable {
   pointer-events: auto;
   cursor: grab;
+  transition: transform .15s ease, filter .15s ease;
 }
+.shop-item.is-draggable:hover { filter: brightness(1.12); transform: scale(1.07); }
 .shop-item.is-draggable:active {
   cursor: grabbing;
 }
@@ -156,7 +158,8 @@ body {
   transition: all 0.15s;
   min-width: 56px;
 }
-.tool-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.tool-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); transform: translateY(-2px); }
+.tool-btn:active { transform: scale(0.93); }
 .tool-btn.active {
   border-color: var(--accent);
   color: var(--accent);
@@ -241,12 +244,13 @@ body {
   font-size: 18px;
   border-radius: 10px;
   pointer-events: none;
-  transition: opacity 0.3s;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity .3s cubic-bezier(0.16,1,0.3,1), transform .3s cubic-bezier(0.16,1,0.3,1);
   z-index: 50;
   text-align: center;
 }
-.status-hidden { opacity: 0; }
-.status-visible { opacity: 1; }
+.status-hidden { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+.status-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* 提示框里的锄头贴图（替换原 emoji 🔨） */
 #status-message .status-hoe {
@@ -270,6 +274,8 @@ body {
   text-align: center;
   pointer-events: none;
   white-space: nowrap;
+  opacity: 0; visibility: hidden;
+  transition: opacity .3s cubic-bezier(0.16,1,0.3,1), visibility .3s;
 }
 .busy-icon {
   height: 20px;
@@ -277,8 +283,8 @@ body {
   image-rendering: pixelated;
   margin-right: 6px;
 }
-.busy-hidden { display: none; }
-.busy-visible { display: block; }
+#busy-indicator.busy-hidden { opacity: 0; visibility: hidden; }
+#busy-indicator.busy-visible { opacity: 1; visibility: visible; }
 .busy-bar {
   margin-top: 6px;
   height: 6px;
@@ -304,7 +310,13 @@ body {
   background: var(--overlay);
   align-items: center; justify-content: center;
   z-index: 100;
+  display: flex;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .4s cubic-bezier(0.16,1,0.3,1), visibility .4s;
 }
+/* 覆盖通用 .overlay-visible/.overlay-hidden 的 display 硬切，改为平滑淡入淡出 */
+#inventory-overlay.overlay-visible { opacity: 1; visibility: visible; pointer-events: auto; }
+#inventory-overlay.overlay-hidden  { opacity: 0; visibility: hidden; pointer-events: none; }
 
 /* 背包面板：MC inventory 纹理背景（176:166 比例） */
 #inventory-panel {
@@ -320,6 +332,14 @@ body {
   border: 4px solid #3b3b3b;
   box-shadow: 0 10px 30px rgba(0,0,0,0.6);
   color: #fff;
+}
+/* 面板进场：淡入 + 轻微上移缩放（复用任务书同套观感） */
+#inventory-overlay.overlay-visible #inventory-panel {
+  animation: panelIn .42s cubic-bezier(0.16,1,0.3,1) both;
+}
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(16px) scale(.96); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* 关闭按钮已移除：背包关闭改为点击面板外区域 or 按 B 键 */
@@ -370,6 +390,13 @@ body {
   position: relative;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
+  transition: background-color .15s ease;
+  animation: slotIn .42s cubic-bezier(0.16,1,0.3,1) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+@keyframes slotIn {
+  from { opacity: 0; transform: translateY(8px) scale(.85); }
+  to   { opacity: 1; transform: none; }
 }
 .inv-slot::after {
   content: "";
@@ -418,7 +445,7 @@ body {
 }
 #day-summary.panel-hidden { display: none; }
 #day-summary.panel-visible {
-  animation: slideInRight 0.35s ease;
+  animation: slideInRight 0.4s cubic-bezier(0.16,1,0.3,1);
 }
 @keyframes slideInRight {
   from { opacity: 0; transform: translate(40px, -50%); }
@@ -468,4 +495,200 @@ body {
   color: var(--accent);
   font-size: 13px;
   margin: 4px 0;
+}
+
+/* ===== 背包左侧操作列：商店 / 睡觉 / 调试 / 任务（竖排，贴在背包左边外侧，避免 GUI 顶部拥挤） ===== */
+#inv-topbar {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(calc(-100% - 10px), -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 5;
+}
+#inv-topbar .tool-btn { min-width: 52px; padding: 3px 8px; }
+#inv-topbar .tool-icon-img { width: 24px; height: 24px; }
+/* 工具栏里的商店/睡觉/调试已移入背包，故在工具栏隐藏（DOM 保留，避免 main.js 绑定失效） */
+#btn-shop, #btn-sleep, #btn-debug { display: none; }
+
+/* 任务书面板（Advancement / 进度树）：z-index 高于背包 overlay，关闭后回到背包 */
+#quest-overlay {
+  position: fixed; inset: 0;
+  background: var(--overlay);
+  align-items: center; justify-content: center;
+  z-index: 110;
+  display: flex;                /* 始终在布局树中，显隐用 opacity/visibility，避免 display:none 切断进出场动画 */
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .4s cubic-bezier(0.16,1,0.3,1), visibility .4s;
+}
+/* 覆盖通用 .overlay-visible/.overlay-hidden 的 display 切换，改为平滑淡入淡出 */
+#quest-overlay.overlay-visible { opacity: 1; visibility: visible; pointer-events: auto; }
+#quest-overlay.overlay-hidden  { opacity: 0; visibility: hidden;  pointer-events: none; }
+#quest-panel {
+  position: relative;
+  /* 与背包面板同尺寸公式：跟随窗口缩放、最大 760px，比例 176:166，做到「跟背包一样大」 */
+  width: min(760px, 94vw);
+  aspect-ratio: 176 / 166;
+  background-size: 100% 100%; background-repeat: no-repeat;
+  border: 4px solid #3b3b3b; box-shadow: 0 10px 30px rgba(0,0,0,.6);
+  image-rendering: pixelated;
+  overflow: hidden;            /* 视口：超出部分裁切，拖动浏览 */
+  cursor: grab;                /* 提示可拖拽 */
+  touch-action: none;          /* 触屏拖动不触发页面滚动 */
+  user-select: none;
+}
+#quest-panel.grabbing { cursor: grabbing; }
+#quest-tree {
+  position: absolute; inset: 0;
+  background-size: contain; background-position: center; background-repeat: no-repeat;
+  image-rendering: pixelated;
+  transform-origin: 0 0;       /* 平移/缩放以左上角为基准 */
+  will-change: transform;
+}
+/* 连线：纯代码绘制的 SVG 折线层（占位由 JS 注入 <svg>） */
+.quest-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.q-link { fill: none; stroke: #b9a06a; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+.q-link.done { stroke: #7ec46a; }
+/* 任务节点：正方形框(obtained/unobtained 区分完成) + 居中图标 + 文字 */
+.quest-frame { position: absolute; background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated; box-sizing: border-box; pointer-events: auto; }
+.quest-ic { position: absolute; image-rendering: pixelated; pointer-events: none; }
+.quest-txt { position: absolute; width: 120px; font-size: 12px; line-height: 1.3; text-shadow: 1px 1px 2px #000, 0 0 3px #000; pointer-events: none; }
+.quest-ttl { font-weight: bold; color: #fff; }
+.quest-ds { color: #dfe; font-size: 11px; }
+/* 悬停提示框：默认隐藏，鼠标移上才显示。节点详情（长文字）与选项卡解锁条件共用同一套外观。
+   短名仍常驻在选项卡上，不进弹窗；弹窗只承载详情：节点=标题+描述+前置/可解锁，选项卡=解锁条件/进度。 */
+.quest-tip, .quest-tab-tip { position: fixed; z-index: 200; pointer-events: none; max-width: 240px; background-color: rgba(20,18,28,.95); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); background-size: 100% 100%; background-position: center; background-repeat: no-repeat; padding: 8px 11px; color: #fff; font-size: 13px; line-height: 1.5; text-shadow: 1px 1px 2px #000; opacity: 0; visibility: hidden; transform: translateY(6px); transition: opacity .2s cubic-bezier(0.16,1,0.3,1), transform .2s cubic-bezier(0.16,1,0.3,1), visibility .2s; }
+.quest-tip.show, .quest-tab-tip.show { opacity: 1; visibility: visible; transform: translateY(0); }
+.quest-tip .quest-ttl { font-size: 13px; }
+.quest-tip .quest-ds { margin-top: 3px; }
+/* 有向图关系行：前置(入度) / 可解锁(出度)，与描述之间用细分隔线断开 */
+.quest-gr {
+  margin-top: 5px; padding-top: 4px; font-size: 11px; line-height: 1.45;
+  border-top: 1px solid rgba(255,255,255,.16); color: #cfc7b0;
+}
+.quest-gr + .quest-gr { border-top: none; margin-top: 2px; padding-top: 0; }
+.quest-gr b { color: #ffe9a8; font-weight: bold; margin-right: 5px; }
+/* 关联节点小标签：未完成灰、已完成绿；跨支线的追加分类名 */
+.quest-gr .q-node {
+  display: inline-block; margin: 1px 3px 1px 0; padding: 0 4px;
+  border-radius: 3px; background: rgba(255,255,255,.09); color: #e6e0cf;
+}
+.quest-gr .q-node.ok { background: rgba(126,196,106,.18); color: #b9e6a8; }
+.quest-gr .q-node i { font-style: normal; opacity: .6; font-size: 10px; }
+/* 完成/未完成状态贴图（confirm 1184×1024 / Icon_Locked 1024×1424，均非 1:1）：
+   统一定高、宽度 auto 保持原比例，两者视觉高度一致且都不变形。 */
+.quest-tip .q-st {
+  height: 12px; width: auto; image-rendering: pixelated;
+  vertical-align: -2px; margin-right: 3px;
+}
+
+/* ===== 任务书流畅动画（只动 opacity/transform，60fps 丝滑；指数缓动 cubic-bezier(0.16,1,0.3,1)，避免 bounce）===== */
+/* 节点进场：淡入 + 轻微放大 + 上移，按 --i 错峰；动画结束由 JS 移除 .qenter，交还 hover 控制权 */
+.qenter { animation: qenter .46s cubic-bezier(0.16,1,0.3,1) both; }
+@keyframes qenter { from { opacity: 0; transform: translateY(10px) scale(.82); } to { opacity: 1; transform: none; } }
+/* 连线绘制：stroke-dashoffset 从 pathLength(=100)→0，按 --i 错峰，呈现「自己画出来」的效果 */
+.q-link { stroke-dasharray: 100; stroke-dashoffset: 100; animation: qdraw .6s cubic-bezier(0.16,1,0.3,1) both; animation-delay: calc(var(--i, 0) * 55ms); }
+@keyframes qdraw { to { stroke-dashoffset: 0; } }
+/* 节点 hover：轻微放大 + 提亮（与进场动画不冲突，.qenter 已移除） */
+.quest-frame { transition: transform .16s cubic-bezier(0.16,1,0.3,1), filter .16s ease; }
+.quest-frame:hover { transform: scale(1.07); filter: brightness(1.12); }
+/* 尊重「减少动效」偏好：降级为无空间位移的即时显隐 */
+@media (prefers-reduced-motion: reduce) {
+  #quest-overlay, #quest-frame-wrap { transition: opacity .01ms !important; }
+  #quest-frame-wrap { transform: none !important; }
+  .qenter, .q-link { animation: none !important; }
+  .quest-frame { transition: none !important; }
+  .quest-frame:hover { transform: none !important; filter: none !important; }
+  .quest-tip { transition: opacity .01ms !important; }
+}
+/* 任务书整体外框：选项卡在上、面板在下，整体居中（不再整体上移，否则选项卡被推离面板） */
+#quest-frame-wrap {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center;
+  opacity: 0; transform: translateY(16px) scale(.985);
+  transition: opacity .44s cubic-bezier(0.16,1,0.3,1), transform .44s cubic-bezier(0.16,1,0.3,1);
+}
+#quest-overlay.overlay-visible #quest-frame-wrap { opacity: 1; transform: none; }
+/* 选项卡（分类页签）条：挂在面板上方，底部压住面板顶边连成一体（Minecraft 进度树页签） */
+#quest-tabs {
+  position: relative;
+  display: flex; gap: 2px; z-index: 30; pointer-events: none;
+  align-items: flex-end;   /* 底边对齐：所有页签底边齐平压在面板顶边上，选中态多出的高度一律「向上」长 */
+  margin-bottom: -111px;   /* 负边距：页签底边压住面板顶边 111px（用户精调，要求再往下 1px），只改这一处 */
+  top: 0;                  /* 页签条整体纵向微调（正=下移）。未选中页签保持原位，故为 0；
+                              选中态的额外下移单独写在 .quest-tab.active 上。
+                              改这里不要动上面的 margin-bottom：relative 偏移不参与布局流，面板位置纹丝不动 */
+}
+/* 页签贴图两张比例不同，不能塞进同一个正方盒子（原 92×86 + 100% 100% 会把选中态横向拉宽 22%）：
+     advancement_tab_above_middle           1136×1024 → 1.109  四边封闭（未选中，独立方块）
+     advancement_tab_above_middle_selected  1024×1168 → 0.877  底边开口（选中，向下嵌进面板）
+   宽度统一 86px（页签需并排对齐），高度各按自身比例算：86/1.109≈78、86/0.877≈98（取整 100，padding-top 22 让内容盒对齐未选中高度）。 */
+.quest-tab {
+  position: relative; width: 78px; height: 70px; pointer-events: auto;
+  top: -1px;   /* 未选中页签整体上移 1px（用户微调）；选中态用 .quest-tab.active 的 top:7px 覆盖 */
+  box-sizing: border-box;
+  background-size: 100% 100%; background-repeat: no-repeat; image-rendering: auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; filter: brightness(.82) saturate(.9);
+  transition: filter .12s;
+}
+.quest-tab-ic { width: 26px; height: 26px; image-rendering: pixelated; pointer-events: none; }
+.quest-tab-ic--core { width: 54px; height: 54px; image-rendering: pixelated; pointer-events: none; }
+.quest-tab:hover { filter: brightness(1) saturate(1); }
+/* 选中态：贴图更高(105px)，底边与其它页签齐平，多出的 22px 向【上】突出（MC 进度树的选中页签就是往上长）。
+   用 padding-top 吃掉这 22px —— 背景铺满 border-box(105px) 不变形，
+   而内容盒仍是底部 83px，图标/文字与相邻未选中页签保持齐平，切页签时不会上下跳。 */
+.quest-tab.active {
+  filter: brightness(1.14) saturate(1.1);
+  height: 92px; padding-top: 22px;
+  top: 7px;   /* 选中页签单独再往下 7px（用户微调：2→7）：未选中的已上移 1px，只有选中的更深地咬进面板 */
+}
+/* 选项卡分类标签：名字短，直接常驻显示；悬停弹窗另显示该分类的详情（解锁条件/进度） */
+.quest-tab-lbl {
+  font-size: 15px; font-weight: bold; color: #fff;
+  text-shadow: 1px 1px 2px #000, 0 0 4px #000; pointer-events: none;
+  margin-top: 6px;
+}
+/* 未解锁支线选项卡右上角的锁图标（Icon_Locked） */
+/* 注意：Icon_Locked 原图 1024×1424（竖长，比例 0.719），不是正方形。
+   只能定高、宽度 auto，硬设 width=height 会把锁横向拉宽近 40% 压扁。 */
+.quest-tab-lock {
+  position: absolute; top: 4px; right: 4px; height: 26px; width: auto;
+  image-rendering: pixelated; pointer-events: none;
+  filter: drop-shadow(1px 1px 1px #000);
+}
+/* 锁定态：去饱和变暗，hover 也不提亮、光标变禁止 */
+.quest-tab.locked { filter: brightness(.55) saturate(.45); }
+.quest-tab.locked:hover { filter: brightness(.6) saturate(.5); cursor: not-allowed; }
+/* 尝试点击未解锁选项卡时的「抖动」反馈：纯 transform 平移，指数衰减、不卡 */
+@keyframes quest-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(6px); }
+  45% { transform: translateX(-5px); }
+  60% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+  90% { transform: translateX(3px); }
+}
+.quest-tab.shake { animation: quest-shake .45s cubic-bezier(.36,.07,.19,.97) both; }
+/* 已开启「减少动效」的用户不抖，仅保留文字提示 */
+@media (prefers-reduced-motion: reduce) {
+  .quest-tab.shake { animation: none; }
+}
+
+/* 全局：尊重系统「减少动效」偏好，关闭所有过渡/动画（含本轮新增的背包/提示/忙碌/工具栏/商店） */
+@media (prefers-reduced-motion: reduce) {
+  #inventory-overlay,
+  #inventory-panel,
+  .inv-slot,
+  #status-message,
+  #busy-indicator,
+  #day-summary {
+    animation: none !important;
+    transition: opacity .01ms !important;
+  }
+  .tool-btn:active,
+  .shop-item.is-draggable:hover { transform: none !important; }
 }
