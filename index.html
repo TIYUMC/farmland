@@ -56,6 +56,12 @@
     <!-- 背包界面（MC 物品栏 GUI：inventory.png 纹理背景） -->
     <div id="inventory-overlay" class="overlay-hidden">
       <div id="inventory-panel">
+        <div id="inv-topbar">
+          <div class="tool-btn" id="btn-inv-shop"><div class="tool-icon"></div><div class="tool-name">商店</div></div>
+          <div class="tool-btn" id="btn-inv-sleep"><div class="tool-icon"></div><div class="tool-name">睡觉</div></div>
+          <div class="tool-btn" id="btn-inv-debug"><div class="tool-icon"></div><div class="tool-name">调试</div></div>
+          <div class="tool-btn" id="btn-inv-book"><div class="tool-icon"></div><div class="tool-name">任务</div></div>
+        </div>
         <div id="inv-money">
           <img id="inv-money-icon" alt="金币" src="">
           <span id="inv-money-val">0</span>
@@ -64,6 +70,16 @@
         <div id="inv-grid-main" class="inv-grid" role="grid" aria-label="物品栏"></div>
         <!-- 快捷栏 9×1：放置全部出售 -->
         <div id="inv-grid-hotbar" class="inv-grid" role="grid" aria-label="快捷栏"></div>
+      </div>
+    </div>
+
+    <!-- 任务书面板（Advancement / 进度树）：背包内书按钮打开，关闭后回到背包 -->
+    <div id="quest-overlay" class="overlay-hidden">
+      <div id="quest-frame-wrap">
+        <div id="quest-tabs"></div>
+        <div id="quest-panel">
+          <div id="quest-tree"></div>
+        </div>
       </div>
     </div>
 
@@ -79,6 +95,7 @@
 
   <script src="js/assets.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/quest.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/farm.js"></script>
   <script src="js/player.js"></script>
