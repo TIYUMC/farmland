@@ -19,7 +19,6 @@ UI.openInventory = function() {
   if (this._inventoryOpen) return;
   if (this._shopOpen) this.closeShop();   // 互斥：打开背包时先收起商店，避免两者叠在一起
   this._inventoryOpen = true;
-  Engine.pause();
   const panel = document.getElementById('inventory-panel');
   const invImg = this._assetURL('inventory');
   if (invImg) panel.style.backgroundImage = `url(${invImg})`;
@@ -117,7 +116,7 @@ UI.renderInventory = function() {
     }));
   }
 
-  slots.slice(0, 27).forEach(s => main.appendChild(s));
+  slots.slice(0, 27).forEach((s, i) => { s.style.setProperty('--i', i); main.appendChild(s); });
   // 补齐空槽，保持 9×3 网格视觉完整
   for (let i = main.children.length; i < 27; i++) {
     main.appendChild(document.createElement('div'));
