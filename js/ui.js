@@ -124,11 +124,12 @@ const UI = {
 
   // 裸土格按 cell 稳定随机选一种土图（与裸土判定用不同 seed 偏移，互不相关）
   _bareSoilKey(r, c) {
-    // 树场根系密集：退化裸土更偏 rooted_dirt（约 3/4），其余在 dirt/coarse_dirt 间，与农场区分
+    // 树场裸土只用「普通土」(coarse_dirt / dirt)，**不再**随机成 rooted_dirt。
+    // 原因：树格与退化裸土都走裸土画法，若裸土也是缠根泥土，则每棵树脚下、每块退化地都是缠根泥土，
+    // 满屏都像被锄过，玩家分不清哪些格是自己真锄出来的（用户「贴图怎么全是缠根泥土？」）。
+    // 现在「缠根泥土」是锄头翻出来(rooted)的专属地表，唯一出处，一眼可辨。
     if (this.scene === 'treeFarm') {
-      const s = this._cellSeed(r + 909, c + 131);
-      if (s < 0.75) return 'rooted_dirt';
-      return s < 0.875 ? 'coarse_dirt' : 'dirt';
+      return this._cellSeed(r + 909, c + 131) < 0.6 ? 'coarse_dirt' : 'dirt';
     }
     const arr = this._bareSoilKeys;
     const i = Math.floor(this._cellSeed(r + 101, c + 257) * arr.length) % arr.length;
@@ -172,13 +173,6 @@ const UI = {
     return res;
   },
 
-  /** 动作成功（res==='ok'）才标记农场脏并重绘；返回是否成功供调用点继续 if 分支。
-   *  严格判字符串 'ok'（与原内联 `if (res === 'ok')` 一致），勿扩展为 res.ok。 */
-  _markFarmDirtyIfOk(res) {
-    const ok = (res === 'ok');
-    if (ok) this.markFarmDirty();
-    return ok;
-  },
   /** 动作失败提示：res 为 null/无 ok 时弹错误并返 true（调用点 `if (this._fail(res,msg)) return;` 早返），否则返 false。harvest/chop/通用错误处理三处共用。 */
   _fail(res, msg) {
     if (!res || !res.ok) { this.showStatus(msg, 800); return true; }
@@ -258,7 +252,7 @@ const UI = {
     this._weatherPhase = (Math.random() < 0.01) ? 'rain' : 'clear';   // 当前阶段：rain / clear（开局随机）
     this._weatherTargetH = this._totalGameHours() + (this._weatherPhase === 'rain' ? this._randRainDurDays() : this._randGapDays()) * this._dayHours;
     this.isRaining = (this._weatherPhase === 'rain');         // 与阶段同步（render 据此画雨）
-    if (this.isRaining) this._rainWaterFields();             // 开局即下雨则立刻浇灌已耕地
+    if (this.isRaining && !this._isWinter()) this._rainWaterFields();   // 开局即下雨则立刻浇灌已耕地（冬天是雪不浇）
     this._rainDrops = null;                                  // 雨滴数组懒初始化
     this._ripples = [];                                      // 雨滴落地涟漪数组（空，下雨时生成）
     this._grassShakes = [];                                  // 草丛被雨打颤数组（空，下雨时生成）
@@ -338,6 +332,7 @@ const UI = {
     const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     const dt = this._lastFrame ? Math.min(0.05, (now - this._lastFrame) / 1000) : 0.016;
     this._lastFrame = now;
+    this._shakeX = 0; this._shakeY = 0;   // 默认无震动偏移；下方用 setTransform 绝对矩阵绘制雨/雪时需要叠回位移，避免被绝对矩阵丢弃
 
     // 切换滑场过渡：横向平移两屏，动画期间不走常规渲染
     if (this._transition) { this._renderTransition(dt); if (this.isRaining) this._drawRain(ctx, dt); if (this._ripples && this._ripples.length) this._drawRipples(ctx, dt); this._updateHUD(); return; }  // 过渡期间不画草颤：双屏混合会让原场景坐标错乱残留在另一屏
@@ -347,7 +342,12 @@ const UI = {
     if (this._shake && this._shake.t > 0) {
       const o = this._shake.offset();
       ctx.save(); ctx.translate(o.x, o.y); shook = true;   // t>0 即固定 save/translate（含过零 o=0），保证配对、避免振荡过零 snap 跳变
+      this._shakeX = o.x; this._shakeY = o.y;   // 记录震动偏移，供下方 setTransform 绝对矩阵（雨/雪）叠回位移
     }
+
+    // 冬季下雪时推进树冠白化（每棵树随机快慢），跨 1/8 档才让静态层失效。
+    // 必须放在 _ensureFarmCache 之前：这样本帧失效后立刻用新的白化程度重绘树冠。
+    this._updateTreeFrost(dt);
 
     // 确保静态层（背景 + 草地/耕地/作物 + 进度条 + 网格线）为最新；
     // 仅在「农场状态变化 / 跨天换季 / 画布尺寸变化」时重绘整张网格到离屏画布。
@@ -420,6 +420,7 @@ const UI = {
 
   /** 视觉下雨：纯画面效果，不影响玩法。雨滴用「水」贴图截取的一段绘制，按天气系统随机下雨。 */
   _drawRain(ctx, dt) {
+    if (this._isWinter()) { this._drawSnow(ctx, dt); return; }   // 冬天：雨渲染为飘雪（视觉替换，季节由 Engine.season 决定）
     const W = this.canvas.width, H = this.canvas.height;
     if (!this._rainDrops) {
       const n = Math.max(60, Math.round((W * H) / 4200)); // 雨滴数随画布面积
@@ -438,13 +439,13 @@ const UI = {
         if (d.y >= d.landY) { this._spawnRipple(d.x, d.landY); Object.assign(d, this._newDrop(W, H, false)); }
         const w = Math.max(1.2, d.len * 0.12 * (d.wF || 1)), h = d.len * 1.2;
         const ang = -Math.atan2(d.vx, d.vy);    // 运动方向角取负 → 雨丝斜度与掉落方向一致（之前符号反了，斜向相反）
-        ctx.save();
+        // 用 setTransform 直接拼「平移+旋转」矩阵，省去 save/translate/rotate/restore 四次状态栈操作（视觉完全一致）
+        const ca = Math.cos(ang), sa = Math.sin(ang);
         ctx.globalAlpha = (d.alpha != null) ? d.alpha : 1;
-        ctx.translate(d.x, d.y);
-        ctx.rotate(ang);
+        ctx.setTransform(ca, sa, -sa, ca, d.x + this._shakeX, d.y + this._shakeY);
         ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
-        ctx.restore();
       }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = 1;
     } else {
       // 精灵未加载好时的回退：蓝色雨丝（一次性 path，性能友好）
@@ -460,6 +461,59 @@ const UI = {
       }
       ctx.stroke();
     }
+  },
+
+  /** 冬日飘雪：冬季「下雨」时渲染为雪（纯视觉，复用 rain 的触发时机 isRaining）。
+   *  雪花用 snow 贴图绘制，缓慢下落 + 轻微左右摇摆 + 自转；落地不溅水圈（与雨不同，雪被地面接住）。 */
+  _drawSnow(ctx, dt) {
+    const W = this.canvas.width, H = this.canvas.height;
+    if (!this._snowFlakes) {
+      const n = Math.max(50, Math.round((W * H) / 6000));   // 雪花数随画布面积
+      this._snowFlakes = [];
+      for (let i = 0; i < n; i++) this._snowFlakes.push(this._newSnow(W, H, true));
+    }
+    // 冬日冷白天色（比雨更亮，仅一层淡冷蓝薄雾，不压暗）
+    ctx.fillStyle = 'rgba(205,215,235,0.10)';
+    ctx.fillRect(-8, -8, W + 16, H + 16);
+    const spr = ASSETS.get('snow');
+    for (const f of this._snowFlakes) {
+      f.y += f.vy * dt;
+      f.phase += f.swaySpeed * dt;
+      f.rot += f.spin * dt;
+      const x = f.x + Math.sin(f.phase) * f.swayAmp;
+      if (f.y - f.size > H) { Object.assign(f, this._newSnow(W, H, false)); continue; }
+      const s = f.size;
+      const ca = Math.cos(f.rot), sa = Math.sin(f.rot);
+      ctx.globalAlpha = f.alpha;
+      ctx.setTransform(ca, sa, -sa, ca, x + this._shakeX, f.y + this._shakeY);   // 省去 save/translate/rotate/restore 四次状态栈操作（视觉一致）；叠加震动偏移
+      if (spr && spr.width) {
+        ctx.imageSmoothingEnabled = false;                     // 保 NEAREST，像素雪花的方块边缘不模糊
+        ctx.drawImage(spr, -s / 2, -s / 2, s, s);            // snow 贴图（15×15 八角星，2px 粗臂）
+      } else {                                               // 贴图未就绪兜底：白色加号
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillRect(-s / 2, -1.2, s, 2.4);
+        ctx.fillRect(-1.2, -s / 2, 2.4, s);
+      }
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+  },
+
+  /** 生成一片雪花：initial=true 时随机铺满全屏；否则从顶部外侧重生。 */
+  _newSnow(W, H, initial) {
+    const size = 9 + Math.random() * 13;                      // 绘制尺寸（比雨丝小、柔和）
+    return {
+      x: Math.random() * W,
+      y: initial ? Math.random() * H : -12 - Math.random() * 30,
+      vy: 20 + Math.random() * 28,                            // 缓慢下落（约为雨速的 1/4）
+      size,
+      phase: Math.random() * Math.PI * 2,
+      swayAmp: 7 + Math.random() * 16,                        // 左右摇摆幅度（雪比雨飘）
+      swaySpeed: 0.7 + Math.random() * 1.1,
+      spin: (Math.random() - 0.5) * 0.7,                      // 缓慢自转
+      rot: Math.random() * Math.PI * 2,
+      alpha: 0.55 + Math.random() * 0.4,
+    };
   },
 
   /** 雨滴落地：在 (x,y) 生成一圈扩散涟漪（用「水」贴图渲染，去鲜明灰蓝）
@@ -515,9 +569,16 @@ const UI = {
       const x = s.c * cs, y = s.r * cs;
       const gstate = (grassSrc.grass && grassSrc.grass[s.r]) ? (grassSrc.grass[s.r][s.c] || 0) : 0;
       const isBare = !!(grassSrc.bare && grassSrc.bare[s.r] && grassSrc.bare[s.r][s.c]);
-      // 整格重画（底土 + 摆动草），与静态层完全同款画法，仅草顶层带 swayAngle；
-      // 视觉上就是「原来那格草在弯」，不再叠加第二层。抖完 age 过期即不再重画，缓存静态草原样复原。
-      this._drawGrassGroundCell(ctx, s.r, s.c, x, y, cs, gstate, isBare, colors, angle);
+      // 贴回预渲染草格底（像素级等价，省去 gblock + 灰度 overlay 两次 drawImage 与一次 composite 切换），
+      // 再实时画会摆动的草顶层；草颤结束 age 过期即不再重画，缓存静态草原样复原。
+      const entry = this._grassBaseCache && this._grassBaseCache[s.r + ',' + s.c];
+      if (entry) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(entry.cv, x, y);            // 离屏底 = 实时同像素合成结果，1 次 drawImage 替代底土重画
+        if (entry.top) this._drawGrassTopLayer(ctx, s.r, s.c, x, y, cs, gstate, colors, angle);
+      } else {
+        this._drawGrassGroundCell(ctx, s.r, s.c, x, y, cs, gstate, isBare, colors, angle);  // 缓存缺失兜底
+      }
       keep.push(s);
     }
     this._grassShakes = keep;
@@ -555,18 +616,16 @@ const UI = {
       const rad = r.maxR * k;
       const ry = rad * 0.42;                          // 顶视：纵向压扁
       const alpha = (1 - k) * 0.55;
-      if (spr) {                                       // 水贴图淡填充（用「水」贴图，去鲜明灰蓝）
-        ctx.save();
+      if (spr) {                                       // 水贴图淡填充：用 setTransform 直接拼「平移+缩放」绝对矩阵，省去 save/translate/scale/restore 四次状态栈操作（视觉一致）；叠加震动偏移
         ctx.globalAlpha = alpha * 0.5;
-        ctx.translate(r.x, r.y);
-        ctx.scale(rad / (spr.width / 2), ry / (spr.height / 2));
+        ctx.setTransform(rad / (spr.width / 2), 0, 0, ry / (spr.height / 2), r.x + this._shakeX, r.y + this._shakeY);
         ctx.drawImage(spr, -spr.width / 2, -spr.height / 2);
-        ctx.restore();
       }
-      ctx.save();                                      // 扩散水蓝环
+      ctx.save();                                      // 扩散水蓝环（仅隔离 state，留 1 次 save/restore）
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = 'rgba(150,170,205,1)';
       ctx.lineWidth = Math.max(1, 2.2 * (1 - k));
+      ctx.setTransform(1, 0, 0, 1, this._shakeX, this._shakeY);  // 抵消上方绝对矩阵，叠加震动偏移
       ctx.beginPath();
       ctx.ellipse(r.x, r.y, rad, ry, 0, 0, Math.PI * 2);
       ctx.stroke();
@@ -574,11 +633,17 @@ const UI = {
       keep.push(r);
     }
     this._ripples = keep;
+    // 复位变换/透明度到外层 render 的「震动平移 + globalAlpha=1」基线（原 save/restore 平衡态），供后续 HUD 沿用
+    ctx.setTransform(1, 0, 0, 1, this._shakeX, this._shakeY);
+    ctx.globalAlpha = 1;
   },
 
   // ───────────────────────── 秋日落叶系统 ─────────────────────────
   /** 当前是否秋季：落叶只在秋季出现（season 0春/1夏/2秋/3冬）。 */
   _isAutumn() { return (typeof Engine !== 'undefined') && (Engine.season === 2 || this._forceAutumnLeaves); },
+
+  /** 当前是否冬季：冬季「下雨」时渲染为飘雪（season 0春/1夏/2秋/3冬）。 */
+  _isWinter() { return (typeof Engine !== 'undefined') && Engine.season === 3; },
 
   /** 秋叶色板（橙/金黄/红褐/枯黄褐），灰度原图用 source-atop 染成纯秋色并保留叶形 alpha。 */
   _autumnLeafColors() { return ['#d2772a', '#e0a82e', '#b8442a', '#c89a3c', '#9c6f2e']; },
@@ -692,7 +757,7 @@ const UI = {
     }
     return this._litterGrid;
   },
-  /** 在单格 (x,y,cs) 按 count(0~4) 份绘制落叶：每份占 1/4 格，固定四象限顺序（左上→右上→左下→右下）铺小落叶贴图。 */
+  /** 在单格 (x,y,cs) 按 count(0~4) 份绘制落叶：每份取「贴图的 1/4（一个象限）」绘入对应格象限（左上→右上→左下→右下）。 */
   _drawLitterCell(ctx, x, y, cs, count) {
     const img = this._litterTinted();
     if (!img) return;
@@ -700,13 +765,20 @@ const UI = {
     const h = cs / 2;
     const qx = [x, x + h, x, x + h];
     const qy = [y, y, y + h, y + h];
+    // 把一个 leaf_litter 贴图**裁成 4 个象限**，每份取其中一块（1/4 贴图）绘入对应格象限，
+    // 而非把整张缩成 1/4 格。source 取自然尺寸的一半（左右×上下各半）。
+    const sw = (img.naturalWidth || img.width) / 2;
+    const sh = (img.naturalHeight || img.height) / 2;
+    const sx = [0, sw, 0, sw];
+    const sy = [0, 0, sh, sh];
     for (let k = 0; k < count && k < 4; k++) {
-      ctx.drawImage(img, qx[k], qy[k], h, h);   // 整张 leaf_litter 缩小到 1/4 格，保留纹理
+      ctx.drawImage(img, sx[k], sy[k], sw, sh, qx[k], qy[k], h, h);
     }
   },
 
   /** 秋日落叶每日生成 / 冬季消失（用户规则，单位=1份=1/4格）：
-   *  秋季：每树 3% 概率 → 相邻非树非草格 +1 份（该格满 4 份则不计）；每天至多 2 份、全图至多 10 个格有落叶（每格0~4份）。
+   *  秋季（R78 按用户「秋天地上落叶提升四倍」整体 ×4）：每树 12% 概率（原 3%）→ 相邻非树非草格 +1 份
+   *  （该格满 4 份则不计）；每天至多 16 份（原 4）、全图至多 40 个格有落叶（原 10；每格 0~4 份上限不变）。
    *  冬季：地上枯叶随机消失，每天至多 2 份（随机抽有落叶的格 -1）。春/夏：清空。 */
   _spawnDailyLitter() {
     const season = Engine.season;
@@ -730,14 +802,14 @@ const UI = {
     // 统计已占用格数（>0 的格）
     let occupied = 0;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c] > 0) occupied++;
-    let dayParts = 0;                                            // 当天已落份数（上限 2）
+    let dayParts = 0;                                            // 当天已落份数（上限 16，R78 ×4）
     // 收集所有树格
     const trees = [];
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (TreeFarm.trees[r] && TreeFarm.trees[r][c]) trees.push([r, c]);
     for (let i = 0; i < trees.length; i++) {
-      if (dayParts >= 2) break;                                  // 每天至多 2 份
+      if (dayParts >= 16) break;                                 // 每天至多 16 份（R78 ×4，可分散任意格）
       const [r, c] = trees[i];
-      if (Math.random() >= 0.03) continue;                       // 每棵树 3% 命中
+      if (Math.random() >= 0.12) continue;                       // 每棵树 12% 命中（R78 ×4）
       // 收集「相邻非树、非绿黄草、未满 4 份」的格
       const neigh = [];
       for (let dr = -1; dr <= 1; dr++) {
@@ -759,7 +831,7 @@ const UI = {
       if (gr2 >= 1) continue;                                    // 绿/黄草上 → 无效
       if (grid[nr][nc] >= 4) continue;                           // 满 4 份 → 无效
       const wasEmpty = grid[nr][nc] === 0;
-      if (wasEmpty && occupied >= 10) continue;                  // 总共至多 10 个格有落叶（新格受限）
+      if (wasEmpty && occupied >= 40) continue;                  // 总共至多 40 个格有落叶（R78 ×4，新格受限）
       grid[nr][nc]++;
       if (wasEmpty) occupied++;
       dayParts++;
@@ -852,10 +924,11 @@ const UI = {
     this._weatherTargetH = now + this._randRainDurDays() * this._dayHours;
   },
 
-  /** 开始下雨并立刻浇灌主农场所有已耕地（_updateWeather 与 _toggleRain 的 else 分支共用，消除重复的 start+water 两行） */
+  /** 开始下雨并立刻浇灌主农场所有已耕地（_updateWeather 与 _toggleRain 的 else 分支共用，消除重复的 start+water 两行）。
+   *  冬天是雪不是雨 → 不浇灌耕地（雪被地面接住，不会让地变湿）。 */
   _startRainAndWater(now) {
     this._startRain(now);
-    this._rainWaterFields();
+    if (!this._isWinter()) this._rainWaterFields();
   },
 
   /** 同步下雨标志：把 this.isRaining 与当前天气阶段对齐（_updateWeather 与 _toggleRain 共用，消除重复的同步赋值） */
@@ -1013,6 +1086,35 @@ const UI = {
     const sctx = cv.getContext('2d');
     sctx.clearRect(0, 0, cv.width, cv.height);
     this._renderStaticScene(sctx);
+    this._rebuildGrassBase();   // 草格底随静态层一起重建（同失效触发：跨天换季/尺寸/农场变化），保证缓存与静态层像素一致
+  },
+
+  /** 预渲染草格「底」到离屏画布（dirt + grass_block + 灰度 overlay；裸土用 bareSoil），
+   *  每抖动格每帧只 drawImage 贴回 + 实时画摆动草顶层，省去底土重画与 composite 切换。缓存与 _renderStaticScene 同步重建。 */
+  _rebuildGrassBase() {
+    const cs = this.cellSize;
+    const grassSrc = (this.scene === 'treeFarm') ? TreeFarm : Farm;
+    const colors = this._seasonColorAt();
+    const cache = {};
+    for (let r = 0; r < DATA.FARM.ROWS; r++) {
+      for (let c = 0; c < DATA.FARM.COLS; c++) {
+        const gstate = (grassSrc.grass && grassSrc.grass[r]) ? (grassSrc.grass[r][c] || 0) : 0;
+        const isBare = !!(grassSrc.bare && grassSrc.bare[r] && grassSrc.bare[r][c]);
+        if (gstate === 0 && !isBare) { cache[r + ',' + c] = null; continue; }  // 非草非裸：不会草颤，无需缓存底
+        const cv = document.createElement('canvas');
+        cv.width = cs; cv.height = cs;
+        const bctx = cv.getContext('2d');
+        let top = false;
+        if (isBare) {
+          this._drawBareSoil(bctx, r, c, 0, 0, cs, colors);
+        } else {
+          const hasBlock = this._drawGrassBaseLayer(bctx, r, c, 0, 0, cs, colors);
+          top = hasBlock && (gstate === 1 || gstate === 2);
+        }
+        cache[r + ',' + c] = { cv, top };
+      }
+    }
+    this._grassBaseCache = cache;
   },
 
   /** 把指定场景的静态层渲染到一张离屏画布（用于滑场过渡的目标屏） */
@@ -1160,26 +1262,36 @@ const UI = {
           if (Farm.dirt && Farm.dirt[r] && Farm.dirt[r][c]) {
             this._drawBareSoil(ctx, r, c, x, y, cs, colors);
           }
-          // 草方块地面：裸土(土色)只来自草方块上的草退化成无草——Farm.bare[r][c]===true（草1/2退化成0）才画裸土；
-          // 其余草方块保持草方块底纹（含 short_grass 绿草 / short_dry_grass 黄草顶层）。从未长草的普通
-          // 地面即使在秋冬也不随机变裸土，只有真正退化过的草方块才会转土色。
-          else {
-            // 草地（含裸土）统一走共享画法，与树场完全一致
-            const gstate = (Farm.grass && Farm.grass[r]) ? (Farm.grass[r][c] || 0) : 0;
-            const isBare = !!(Farm.bare && Farm.bare[r] && Farm.bare[r][c]);
-            this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
-          }
-        } else {
-          const tex = cell.watered ? 'farmland_moist' : 'farmland_dry';
-          this._drawPaddedAsset(ctx, tex, x, y, cs, pad)
-            || this._fillCell(ctx, x, y, cs, cell.watered ? colors.water : colors.soil);
-          // 耕地描边已移至动态层 _drawFarmlandOverlay（呼吸闪烁，与未浇水高亮同款），此处只画底纹。
+        // 草方块地面：裸土(土色)只来自草方块上的草退化成无草——Farm.bare[r][c]===true（草1/2退化成0）才画裸土；
+        // 其余草方块保持草方块底纹（含 short_grass 绿草 / short_dry_grass 黄草顶层）。从未长草的普通
+        // 地面即使在秋冬也不随机变裸土，只有真正退化过的草方块才会转土色。
+        else {
+          // 草地（含裸土）统一走共享画法，与树场完全一致
+          const gstate = (Farm.grass && Farm.grass[r]) ? (Farm.grass[r][c] || 0) : 0;
+          const isBare = !!(Farm.bare && Farm.bare[r] && Farm.bare[r][c]);
+          this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
         }
+      } else {
+        const tex = cell.watered ? 'farmland_moist' : 'farmland_dry';
+        this._drawPaddedAsset(ctx, tex, x, y, cs, pad)
+          || this._fillCell(ctx, x, y, cs, cell.watered ? colors.water : colors.soil);
+        // 耕地描边已移至动态层 _drawFarmlandOverlay（呼吸闪烁，与未浇水高亮同款），此处只画底纹。
+      }
 
-        // 画作物（抽到 _drawCropCell，与 _drawGrassGroundCell 同款「一格一画法」）
-        if (cell && cell.crop) {
-          this._drawCropCell(ctx, x, y, cs, cell);
-        }
+      // 画花朵：flowers 数组与 dirt/grass 同维；花朵格 = flowers[r][c] > 0（草=0，视觉替换草方块）
+      // 数据驱动：flowers[r][c] 的值即花种编号(1..N)，贴图键查 DATA.FLOWERS（加花种不用改本处）
+      const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
+      if (flower > 0) {
+        const fkey = this._flowerDef(flower).key;
+        // pad=0 让花朵占满整格（视觉上像地里长出来的，与草方块同占位）
+        this._drawPaddedAsset(ctx, fkey, x, y, cs, 0)
+          || this._fillCell(ctx, x, y, cs, '#a9b765');
+      }
+
+      // 画作物（抽到 _drawCropCell，与 _drawGrassGroundCell 同款「一格一画法」）
+      if (cell && cell.crop) {
+        this._drawCropCell(ctx, x, y, cs, cell);
+      }
 
         // 网格线
         ctx.strokeRect(x, y, cs, cs);
@@ -1188,11 +1300,11 @@ const UI = {
 
   /** 共享：画一格「草地地面」——草方块底 + 绿草/枯草丛，或退化裸土。农场与树场共用此画法，视觉完全一致。
    *  gstate: 0 无草 / 1 绿草 / 2 黄草；isBare=true 表示退化成裸土。 */
-  _drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors, swayAngle) {
+  /** 草格「底」：土色 + 草方块染色 + 灰度 overlay（overlay 混合）。不含会逐帧摆动的草顶层。
+   *  预渲染进离屏画布后每帧只贴回（_drawGrassShakes），与实时重画像素级等价——离屏内合成结果 == 实时同像素合成。
+   *  返回 gblock 是否存在（决定草顶层是否绘制，复刻原 _drawGrassGroundCell 仅在 gblock 存在时才画顶层）。 */
+  _drawGrassBaseLayer(ctx, r, c, x, y, cs, colors) {
     colors = colors || this._seasonColorAt();
-    const pad = 1;
-    const sway = swayAngle || 0;
-    if (isBare) { this._drawBareSoil(ctx, r, c, x, y, cs, colors); return; }
     const gblockGray = ASSETS.get('grass_block');
     const gblock = ASSETS.getTinted('grass_block', this._shade(colors.grass, -18));
     if (gblock) {
@@ -1205,30 +1317,42 @@ const UI = {
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;
       }
-      if (gstate === 1 || gstate === 2) {
-        // 原草层绕格底中心摆动（仅草顶层旋转，底土不动）——这就是「原来的草在弯」，不是再盖一层
-        if (sway) {
-          const cx = x + cs / 2, cyBottom = y + cs;
-          ctx.save();
-          ctx.translate(cx, cyBottom);
-          ctx.rotate(sway);
-          ctx.translate(-cx, -cyBottom);
-        }
-        if (gstate === 1) {
-          const sg = ASSETS.getTinted('short_grass', this._shade(colors.grass, 30));
-          if (sg) { ctx.globalAlpha = 1; this._drawImageCell(ctx, sg, x, y, cs); ctx.globalAlpha = 1; }
-        } else {
-          const dg = ASSETS.get('short_dry_grass');
-          if (dg) {
-            ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
-            this._drawImageCell(ctx, dg, x, y, cs); ctx.globalAlpha = 1;
-          } else { this._fillCell(ctx, x, y, cs, this._dryGrassColor); }
-        }
-        if (sway) ctx.restore();
-      }
     } else {
       this._fillCell(ctx, x, y, cs, this._shade(colors.grass, -18));
     }
+    return !!gblock;
+  },
+
+  /** 草格「顶层」：会逐帧绕格底中心摆动的 short_grass / short_dry_grass（仅 gstate 1/2 有）。逐帧实时画，不可缓存。 */
+  _drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, sway) {
+    if (gstate !== 1 && gstate !== 2) return;
+    const s = sway || 0;
+    if (s) {
+      const cx = x + cs / 2, cyBottom = y + cs;
+      ctx.save();
+      ctx.translate(cx, cyBottom);
+      ctx.rotate(s);
+      ctx.translate(-cx, -cyBottom);
+    }
+    if (gstate === 1) {
+      const sg = ASSETS.getTinted('short_grass', this._shade(colors.grass, 30));
+      if (sg) { ctx.globalAlpha = 1; this._drawImageCell(ctx, sg, x, y, cs); ctx.globalAlpha = 1; }
+    } else {
+      const dg = ASSETS.get('short_dry_grass');
+      if (dg) {
+        ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
+        this._drawImageCell(ctx, dg, x, y, cs); ctx.globalAlpha = 1;
+      } else { this._fillCell(ctx, x, y, cs, this._dryGrassColor); }
+    }
+    if (s) ctx.restore();
+  },
+
+  _drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors, swayAngle) {
+    colors = colors || this._seasonColorAt();
+    const sway = swayAngle || 0;
+    if (isBare) { this._drawBareSoil(ctx, r, c, x, y, cs, colors); return; }
+    const hasBlock = this._drawGrassBaseLayer(ctx, r, c, x, y, cs, colors);
+    if (hasBlock) this._drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, sway);
   },
 
   /** 画一格「裸土/松动土」：先铺土色底，再叠随格随机的裸土贴图（dirt/coarse_dirt/rooted_dirt），
@@ -1346,12 +1470,16 @@ const UI = {
         ctx.strokeStyle = 'rgba(0,0,0,0.10)';
         ctx.lineWidth = 1;
         ctx.strokeRect(x, y, cs, cs);
-        // 被锄头翻过的格：地表明为「缠根泥土」(rooted_dirt)（树场根系太密，耕不成耕地），盖在草地之上
+        // 被锄头翻过的格：地表明为「缠根泥土」(rooted_dirt)（树场根系太密，耕不成耕地），盖在草地之上。
+        // 必须与裸土同款画法（先铺土色底 + pad=1 内边距），否则锄完贴图会从 cs-2 突然涨到 cs，
+        // 看着像「泥土被锄了之后贴图变大了」（用户反馈）。
         if (TreeFarm.getRootedAt(r, c)) {
-          this._drawWoodOrFill(ctx, 'rooted_dirt', x, y, cs, cs, true);
+          this._fillCell(ctx, x, y, cs, colors.soil);
+          this._drawPaddedAsset(ctx, 'rooted_dirt', x, y, cs, 1, true)
+            || this._fillCell(ctx, x, y, cs, colors.soil);
         }
     });
-    // 第三遍：地面落叶堆按「每格0~4份」grid 绘制；秋季生成、冬季逐日消失（故两季都渲染）
+    // 第二遍：地面落叶堆按「每格0~4份」grid 绘制；秋季生成、冬季逐日消失（故两季都渲染）
     if (this._isAutumn() || Engine.season === 3) {
       const grid = this._litterGrid;
       if (grid) {
@@ -1363,7 +1491,18 @@ const UI = {
         }
       }
     }
-    // 第二遍画树：让向上溢出的树冠盖在相邻格之上，形成茂密感（先画下面行的树，上面的树冠自然叠在前）
+    // 第三遍：所有树的「地面树荫椭圆」单独一遍、统一先画在地面层。
+    // 必须先于任何树冠：树冠向上溢出约 0.82 格，会盖进上一行的格子；若树荫仍留在 _drawTreeEntity 里，
+    // 上一行的树（后画）就会把自己的地荫糊到下一行树的树冠上——就是用户看到的「阴影透到叶子上面」。
+    for (let r = 0; r < DATA.FARM.ROWS; r++) {
+      for (let c = 0; c < DATA.FARM.COLS; c++) {
+        const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
+        if (t && t.stage === 'grown') {
+          this._drawShadowEllipse(ctx, c * cs + cs / 2, r * cs + cs * 0.72, cs * 0.52, cs * 0.26, 0.16);
+        }
+      }
+    }
+    // 第四遍画树：让向上溢出的树冠盖在相邻格之上，形成茂密感（先画下面行的树，上面的树冠自然叠在前）
     for (let r = DATA.FARM.ROWS - 1; r >= 0; r--) {
       for (let c = 0; c < DATA.FARM.COLS; c++) {
         const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
@@ -1372,24 +1511,146 @@ const UI = {
     }
   },
 
+  /** 冬季树叶偏白：把指定贴图（叶子/树苗）复制进离屏画布，用 source-atop 叠一层半透明霜白，
+   *  使非透明像素（叶/苗）染白、透明空隙保持透明——得到「偏白霜叶」。按资源 key 缓存复用。 */
+  _winterFrosted(key) {
+    if (!this._winterFrost) this._winterFrost = {};
+    if (key in this._winterFrost) return this._winterFrost[key];
+    const img = ASSETS.get(key);
+    if (!img || !img.width) return null;            // 尚未加载：不缓存，下一帧重试
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(img, 0, 0);
+    cx.globalCompositeOperation = 'source-atop';
+    cx.fillStyle = 'rgba(233,240,248,0.40)';        // 霜白：40% 不透明冷白叠底（淡霜感，太白则下调）
+    cx.fillRect(0, 0, w, h);
+    cx.globalCompositeOperation = 'source-over';
+    this._winterFrost[key] = cv;
+    return cv;
+  },
+
+  /** 冬季「下雪过程中」推进树叶白化：一场雪只有「FROST_BUDGET_PER_SNOW 个 1/8 档」的共享额度，
+   *  随机分配给树场里还没满的树 —— 是零和的：一棵树多吃，别的树就少吃；若某棵树吃满 8 档，
+   *  本场雪额度耗尽，其余树这场合就没机会了（用户原话：「如果一棵树生满，那其他树的机会就没了」）。
+   *   - 只「树场 + 冬季 + 正在下雪(isRaining，冬天的雨即雪)」时发放；雪停则冻结（已白的保留）。
+   *   - 每场雪开始重置额度（已白的树保留，新额度重新随机发）；离开冬季 → 整片清空（融雪回正常叶色）。
+   *   - 不是「每棵树各自独立 0→8」，而是全场共享 N 档、随机撒到随机的树上。
+   *  性能：树冠在静态缓存层，只在白化跨过 1/8 档位时才 markFarmDirty 重绘。 */
+  _updateTreeFrost(dt) {
+    if (!this._isWinter()) {                                   // 非冬季：融雪清空
+      if (this._treeFrost) { this._treeFrost = null; this.markFarmDirty(); }
+      this._frostBudget = 0; this._frostAccum = 0; this._frostSnowingPrev = false;
+      return;
+    }
+    if (this.scene !== 'treeFarm' || !TreeFarm.trees) return;
+
+    const snowing = !!this.isRaining;                          // 冬天的「雨」就是雪
+    if (snowing && !this._frostSnowingPrev) {                  // 新的一场雪：重置本场共享额度
+      this._frostBudget = (DATA.TREEFARM && DATA.TREEFARM.FROST_BUDGET_PER_SNOW) || 8;
+      this._frostAccum = 0;
+    }
+    this._frostSnowingPrev = snowing;
+    if (!snowing) return;                                      // 没下雪不白；已白的冻结保留
+    if (this._frostBudget <= 0) return;                       // 本场雪额度发完，其余树没机会了
+
+    const SPEND_RATE = 0.6;                                    // 发放速度：单位/秒（8 档约 13 秒发完，可调）
+    this._frostAccum = (this._frostAccum || 0) + dt * SPEND_RATE;
+    let stepped = false;
+    while (this._frostAccum >= 1 && this._frostBudget > 0) {
+      this._frostAccum -= 1;
+      this._frostBudget -= 1;
+      // 在还没满（<8 档）的树里随机选一棵，把这一档发给它（零和：吃满的树退出候选池）
+      const grid = this._treeFrost;
+      const cand = [];
+      for (let r = 0; r < DATA.FARM.ROWS; r++) {
+        for (let c = 0; c < DATA.FARM.COLS; c++) {
+          const hasTree = !!(TreeFarm.trees[r] && TreeFarm.trees[r][c]);
+          const key = r * 1000 + c;
+          if (!hasTree) {                                      // 树被砍了：清零，别让新树继承旧白度
+            if (grid && grid[key]) { grid[key] = 0; stepped = true; }
+            continue;
+          }
+          const cur = (grid && grid[key]) || 0;
+          if (Math.floor(cur * 8) < 8) cand.push(key);
+        }
+      }
+      if (cand.length === 0) { this._frostBudget = 0; break; } // 全满了，剩余额度作废
+      const pick = cand[Math.floor(Math.random() * cand.length)];
+      const cur = (grid && grid[pick]) || 0;
+      const next = Math.min(1, cur + 1 / 8);
+      if (Math.floor(next * 8) !== Math.floor(cur * 8)) stepped = true;
+      (this._treeFrost || (this._treeFrost = {}))[pick] = next;
+    }
+    if (stepped) this.markFarmDirty();
+  },
+
+  /** 取某格树当前白化程度（量化到 1/8 档，与上面的缓存失效节奏对齐，避免画出未失效的中间档） */
+  _treeFrostAt(r, c) {
+    const v = (this._treeFrost && this._treeFrost[r * 1000 + c]) || 0;
+    return Math.floor(v * 8) / 8;
+  },
+
+  /** 预合成「树冠精灵」= 季节染色树冠 + 体积暗部(约束②b)，暗部用 source-atop 只落在树冠自身的
+   *  非透明像素上，绝不溢出到格子空白处。
+   *  为什么要预合成：以前 ②b 是直接在主画布上画椭圆，而树冠向上溢出约 0.82 格、树又是由下而上画的，
+   *  于是「后画的上排树」会把自己的体积暗部糊到「前排树的叶子」上——这也是用户说的「阴影透到叶子上面」。
+   *  所有树的树冠尺寸/暗部位置都一样，故按 (leafColor,size) 缓存一次，全场复用，反而更快。 */
+  _canopySprite(leafColor, size) {
+    const tinted = ASSETS.getTinted('oak_leaves', leafColor);
+    if (!tinted || !size) return null;
+    if (!this._canopyCache) this._canopyCache = {};
+    const k = leafColor + '|' + size;
+    if (this._canopyCache[k]) return this._canopyCache[k];
+    if (Object.keys(this._canopyCache).length > 24) this._canopyCache = {};  // 季节色每天渐变，防缓存无限膨胀
+    const cv = document.createElement('canvas');
+    cv.width = size; cv.height = size;
+    const cx = cv.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(tinted, 0, 0, size, size);
+    cx.globalCompositeOperation = 'source-atop';          // 只染树冠自己的像素，空隙保持透明
+    cx.fillStyle = 'rgba(0,0,0,0.18)';
+    cx.beginPath();
+    cx.ellipse(size * 0.64, size * 0.60, size * 0.34, size * 0.30, 0, 0, Math.PI * 2);
+    cx.fill();
+    cx.globalCompositeOperation = 'source-over';
+    this._canopyCache[k] = cv;
+    return cv;
+  },
+
   /** 画一棵资源树（树场专用：grown=大树，sapling=树苗）。
    *  树干 oak_log、树冠 oak_leaves 染季节色并向上溢出（视觉大树，逻辑仍只占 1 格）。 */
   _drawTreeEntity(ctx, x, y, cs, t) {
     if (!t) return;
+    const fr = Math.round(y / cs), fc = Math.round(x / cs);       // 反推格坐标，用于取该树的白化进度
+    const frostAmt = this._isWinter() ? this._treeFrostAt(fr, fc) : 0;
     if (t.stage === 'sapling') {
       // 树苗：用 oak_sapling 像素贴图绘制（用户「树苗换贴图」）；素材缺失时回退简单像素方块，不出 emoji
       const pad = 4, size = cs - pad * 2;
+      const winter = this._isWinter();
       if (!ASSETS.draw(ctx, 'oak_sapling', x + pad, y + pad, size, size)) {
         const cx = x + cs / 2;
         const trunkW = Math.max(2, cs * 0.14), trunkH = cs * 0.34;
         ctx.fillStyle = '#6b4a2b';
         ctx.fillRect(cx - trunkW / 2, y + cs - trunkH - 1, trunkW, trunkH);
-        const leaf = this._seasonGrass(-22);
+        const leaf = (winter && frostAmt > 0.5) ? '#e3ecf5' : this._seasonGrass(-22);
         ctx.fillStyle = leaf;
         const ly = y + cs * 0.16, lh = cs * 0.26;
         ctx.fillRect(cx - cs * 0.22, ly + lh,       cs * 0.44, lh);
         ctx.fillRect(cx - cs * 0.16, ly + lh * 0.5, cs * 0.32, lh);
         ctx.fillRect(cx - cs * 0.10, ly,            cs * 0.20, lh);
+      } else if (frostAmt > 0) {
+        // 按该树自己的白化进度叠霜白（0=没白，1=全白）——下雪过程中逐渐盖白，不是一进冬天就白
+        const frost = this._winterFrosted('oak_sapling');
+        if (frost && frost.width) {
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, frostAmt);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(frost, x + pad, y + pad, size, size);
+          ctx.restore();
+        }
       }
       return;
     }
@@ -1398,11 +1659,13 @@ const UI = {
       const baseGrass = this._seasonColorAt().grass;
       // 约束①：树冠比草地更深/更饱和（偏离由 -14 加深到 -30）
       const leafColor = this._shade(baseGrass, -30);
+      // 树冠底色一律按季节草色染深；冬季的「霜白」改为下面按该树 frostAmt 叠加，
+      // 这样一进冬天不会整片林子瞬间全白，而是下雪过程中一棵棵慢慢泛白（用户要求）。
       const tinted = ASSETS.getTinted('oak_leaves', leafColor);
       const trunkW = cs * 0.52, trunkH = cs * 0.72;
       const tx = x + (cs - trunkW) / 2, ty = y + cs - trunkH - 2;
-      // 约束②a：树冠正下方草地投半透明树荫椭圆（落在地面层上，先于树冠绘制）
-      this._drawShadowEllipse(ctx, x + cs / 2, y + cs * 0.72, cs * 0.52, cs * 0.26, 0.16);
+      // 注：约束②a 的地面树荫椭圆已上移到 _renderTreeFarmScene 的独立一遍（先于所有树冠画），
+      // 否则后画的树会把地荫盖到前排树冠上（用户「阴影透到叶子上面」）。
       // 约束④：树干 oak_log 占下半部，树冠长在树干上（连通，不悬空）
       this._drawWoodOrFill(ctx, 'oak_log', tx, ty, trunkW, trunkH);
       // 树冠：oak_leaves（1024 方图，保持 1:1 不变形），底部接树干顶端向上长，
@@ -1412,13 +1675,27 @@ const UI = {
       const crownX = x + (cs - crownW) / 2;
       const crownBottom = y + cs - trunkH * 0.45;   // 树冠底落在树干上半部，连通不悬空
       const crownY = crownBottom - crownH;          // 向上生长；超界部分由画布自然裁切
-      if (tinted) {
+      // 树冠 + 体积暗部(②b) 已预合成到一张精灵里（暗部 source-atop 只落在叶子像素上，不会溢出去盖到别的树）
+      const canopy = this._canopySprite(leafColor, Math.max(1, Math.round(crownSize)));
+      if (canopy) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(canopy, crownX, crownY, crownW, crownH);
+      } else if (tinted) {                                   // 兜底：贴图还没染好时先画原色树冠
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(tinted, crownX, crownY, crownW, crownH);
       }
+      // 冬季按该树的白化进度 frostAmt 叠一层霜白（下雪过程中逐渐盖白；只染非透明的叶像素，用离屏 source-atop 版）
+      if (frostAmt > 0) {
+        const frostImg = this._winterFrosted('oak_leaves');
+        if (frostImg) {
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, frostAmt);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(frostImg, crownX, crownY, crownW, crownH);
+          ctx.restore();
+        }
+      }
       // 注：A4 约束③（外缘亮边/描边）按用户反馈「太丑了」已移除；靠约束①②④（更深+树荫椭圆+体积暗部+树干连通）做树叶/草地分层
-      // 约束②b：树冠体积阴影 —— 右下叠半透明暗部，做出体积感（与平铺受光的草地拉开层次）
-      this._drawShadowEllipse(ctx, crownX + crownW * 0.64, crownY + crownH * 0.60, crownW * 0.34, crownH * 0.30, 0.18);
     }
     // 注：树桩(stump)阶段已移除——砍树后 trees[r][c]=null 直接消失，不再渲染桩（用户「树桩去掉」）。
   },
@@ -1430,23 +1707,41 @@ const UI = {
   _startAnimLoop() {
     if (this._animRaf) return; // 防止重复启动
     const loop = () => {
+      const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
       try { this.render(); } catch (err) { console.error('[render loop]', err); }
       if (this.ctx) this.ctx.setTransform(1, 0, 0, 1, 0, 0); // 异常帧后复位变换，防止 save/restore 失衡残留偏移
+      // 轻量 FPS 统计（仅 console.log 每秒一次，便于定位卡顿是否帧率问题；不要可删）
+      if (typeof performance !== 'undefined') {
+        if (this._fpsLast == null) this._fpsLast = t0;
+        this._fpsCount = (this._fpsCount || 0) + 1;
+        const dt2 = t0 - this._fpsLast;
+        if (dt2 >= 1000) { this._fps = Math.round(this._fpsCount * 1000 / dt2); this._fpsCount = 0; this._fpsLast = t0; console.log('[FPS]', this._fps); }
+      }
       this._animRaf = requestAnimationFrame(loop);
     };
     this._animRaf = requestAnimationFrame(loop);
   },
 
-  /** 更新 HUD */
+  /** 更新 HUD（仅在值变化时写 DOM，避免每帧 getElementById + 布局重绘——HUD 仅随游戏事件变化） */
   _updateHUD() {
-    document.getElementById('hud-datetime').textContent = Engine.getDateString() + ' ' + Engine.getTimeString();
+    if (!this._hudCache) this._hudCache = { dt: null, sta: null, money: null, pct: null, bg: null };
+    const c = this._hudCache;
+    const dt = Engine.getDateString() + ' ' + Engine.getTimeString();
+    if (dt !== c.dt) { document.getElementById('hud-datetime').textContent = dt; c.dt = dt; }
 
     const shownStamina = Math.round(Player.stamina);
     const pct = (shownStamina / Player.maxStamina) * 100;
-    document.getElementById('stamina-bar-fill').style.width = `${pct}%`;
-    document.getElementById('stamina-bar-fill').style.background = pct < 30 ? '#e0524f' : ''; // B5：体力 <30% 变红
-    document.getElementById('hud-stamina').textContent = `${shownStamina}/${Player.maxStamina}`;
-    document.getElementById('hud-money').textContent = Player.money;
+    const sta = `${shownStamina}/${Player.maxStamina}`;
+    const money = Player.money;
+    const bg = pct < 30 ? '#e0524f' : '';   // B5：体力 <30% 变红
+    if (sta !== c.sta) { document.getElementById('hud-stamina').textContent = sta; c.sta = sta; }
+    if (money !== c.money) { document.getElementById('hud-money').textContent = money; c.money = money; }
+    if (pct !== c.pct || bg !== c.bg) {
+      const fill = document.getElementById('stamina-bar-fill');
+      fill.style.width = `${pct}%`;
+      fill.style.background = bg;
+      c.pct = pct; c.bg = bg;
+    }
   },
 
   /** 工具栏点击 */
@@ -1587,17 +1882,19 @@ const UI = {
   // ⑧ 田间动作（锄 / 浇 / 种 / 收 / 砍树）
   // ─────────────────────────────────────────────
   // ── 农场/树场动作：_startBusy 的 onEffect / onDone 具名化（原内联箭头整体搬出，行为不变）──
-  // 同构 effect 骨架（water/clearGrass/toDirt 共用）：扣体力 → 世界操作 → 成功则刷脏+粒子
-  _actionEffect(row, col, cost, worldFn, burst) {
-    const res = this._tryAction(cost, () => worldFn(row, col));
-    if (this._markFarmDirtyIfOk(res)) {
-      this._spawnBurst(row, col, burst);
-    }
+  // 通用动作骨架：扣体力(cost) 或 cost=null 直接执行 → 世界操作 → 成功(res 满足 isOk)时调用 onOk(res)。
+  // 各 *_Effect 把「成功分支」原样搬进 onOk，worldFn 用闭包固化 row/col，行为逐字等价。
+  _actionEffect(row, col, cost, worldFn, onOk, opts) {
+    const res = (cost == null) ? worldFn(row, col) : this._tryAction(cost, () => worldFn(row, col));
+    const isOk = (opts && opts.isOk) || ((r) => r === 'ok');
+    if (isOk(res) && onOk) onOk(res);
     return res;
   },
   _waterEffect(row, col) {
-    return this._actionEffect(row, col, DATA.TOOL_COST.water, (r, c) => Farm.water(r, c),
-      { colors: ['#6bb6ff', '#9fd4ff', '#bfe8ff'], shape: 'rect', count: 10, speed: 70, gravity: 320, dir: -Math.PI / 2, spread: Math.PI * 1.3 });
+    return this._actionEffect(row, col, DATA.TOOL_COST.water, (r, c) => Farm.water(r, c), (res) => {
+      this.markFarmDirty();
+      this._spawnBurst(row, col, { colors: ['#6bb6ff', '#9fd4ff', '#bfe8ff'], shape: 'rect', count: 10, speed: 70, gravity: 320, dir: -Math.PI / 2, spread: Math.PI * 1.3 });
+    });
   },
   _waterDone(res) {
     if (res !== 'ok') {
@@ -1608,17 +1905,16 @@ const UI = {
     this.showStatus('💧 浇水完成', 500);
   },
   _plantEffect(row, col, seedId, seedName, plantCost) {
-    const res = this._tryAction(plantCost, () => Farm.plant(row, col, seedId));
-    if (this._markFarmDirtyIfOk(res)) {
+    const def = DATA.CROPS[seedId];
+    const hc = (def && def.color) || '#FFD86B';
+    const _rgb = this._hexToRgb(hc);
+    const base = `rgb(${_rgb.r},${_rgb.g},${_rgb.b})`;
+    return this._actionEffect(row, col, plantCost, (r, c) => Farm.plant(r, c, seedId), (res) => {
+      this.markFarmDirty();
       Player.useSeed(seedId);
       this._updateHeldSlot();
-      const def = DATA.CROPS[seedId];
-      const hc = (def && def.color) || '#FFD86B';
-      const _rgb = this._hexToRgb(hc);
-      const base = `rgb(${_rgb.r},${_rgb.g},${_rgb.b})`;
       this._spawnBurst(row, col, { colors: [base, this._shade(base, 30), this._shade(base, -30)], count: 12, speed: 75, gravity: 280 });
-    }
-    return res;
+    });
   },
   _plantDone(res, seedName) {
     if (res === 'no_seed') { this.showStatus(`❌ 种子包里没有 ${seedName} 种子, 去商店买吧 (B)`, 1500); return; }
@@ -1630,15 +1926,13 @@ const UI = {
     }
   },
   _harvestEffect(row, col) {
-    const res = this._tryAction(DATA.TOOL_COST.harvest, () => Farm.harvest(row, col));
-    if (res.ok) {
+    return this._actionEffect(row, col, DATA.TOOL_COST.harvest, (r, c) => Farm.harvest(r, c), (res) => {
       Player.addToInventory(res.cropId, res.count);
       this.markFarmDirty();
       const { def, extra } = this._cropDefExtra(res);
       this._spawnBurst(row, col, { colors: ['#9bd45a', '#c6e87a', '#e8f0a0', (def && def.color) || '#FFD86B'], count: 16, speed: 95, gravity: 260 });
       this._shakeIt(2, 220);
-    }
-    return res;
+    }, { isOk: (r) => r.ok });
   },
   _harvestDone(res) {
     if (this._fail(res, '❌ 无法收割')) return;
@@ -1646,30 +1940,56 @@ const UI = {
     this.showStatus(`🔨 收获 ${def.name}×${res.count}${extra}`, 1500);
   },
   _clearGrassEffect(row, col) {
-    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.clearGrass(r, c),
-      { colors: ['#7bbf4a', '#9bd45a', '#cfe89a'], count: 10, speed: 60, gravity: 200, dir: -Math.PI / 2, spread: Math.PI * 1.4 });
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.clearGrass(r, c), (res) => {
+      this.markFarmDirty();
+      this._spawnBurst(row, col, { colors: ['#7bbf4a', '#9bd45a', '#cfe89a'], count: 10, speed: 60, gravity: 200, dir: -Math.PI / 2, spread: Math.PI * 1.4 });
+    });
   },
   _clearGrassDone(res, gstate) {
     if (res !== 'ok') { this.showStatus('❌ 无法除草', 800); return; }
     const grassIcon = this._grassIconHTML(gstate);
     this.showStatus(grassIcon + ' 除掉了草，可以耕地了', 800);
   },
+  /** 按花种编号(1..N)取 DATA.FLOWERS 定义（贴图键/中文名/粒子色）。越界或 DATA 缺失时兜底第一种。
+   *  渲染、锄花粒子、锄花提示三处共用，避免各写一份查表逻辑。 */
+  _flowerDef(species) {
+    const list = (typeof DATA !== 'undefined' && DATA.FLOWERS) ? DATA.FLOWERS : null;
+    if (!list || !list.length) return { key: 'Allium', name: '花', colors: ['#c77dff', '#e0aaff', '#d8b4f0', '#ffffff'] };
+    return list[(species | 0) - 1] || list[0];
+  },
+  /** 锄花 effect：与 _clearGrassEffect 同构（扣体力 → 调 Farm.clearFlower → 粒屑）。
+   *  花瓣粒屑取该花自己的配色（DATA.FLOWERS[].colors），区别于草屑的纯绿。
+   *  ⚠ 必须在 Farm.clearFlower 之前读花种——清除后格子已归 0，回调里就查不到品种了。 */
+  _clearFlowerEffect(row, col) {
+    const def = this._flowerDef(Farm._flowerState(row, col));
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.clearFlower(r, c), (res) => {
+      this.markFarmDirty();
+      this._spawnBurst(row, col, { colors: def.colors, count: 12, speed: 70, gravity: 220, dir: -Math.PI / 2, spread: Math.PI * 1.4 });
+    });
+  },
+  /** species 由 _handleHoeClick 在清除前捕获后传入（清除后 Farm 里已查不到）。 */
+  _clearFlowerDone(res, species) {
+    if (res !== 'ok') { this.showStatus('❌ 这里没有花', 800); return; }
+    const def = this._flowerDef(species);
+    const flowerIcon = this._iconHTML(def.key, 'status-hoe', def.name) || '🌸';
+    this.showStatus(flowerIcon + ' 锄掉了' + def.name + '，可以耕地了', 800);
+  },
   _tillEffect(row, col) {
-    const res = this._tryAction(DATA.TOOL_COST.hoe, () => Farm.till(row, col));
-    if (res === 'ok') {
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.till(r, c), (res) => {
       if (this.isRaining) { const cl = (Farm.grid[row] && Farm.grid[row][col]); if (cl) cl.watered = true; }
       this.markFarmDirty();
       this._spawnBurst(row, col, { colors: ['#8a5a2b', '#a9763c', '#6b4423'], count: 14, speed: 80, gravity: 320 });
-    }
-    return res;
+    });
   },
   _tillDone(res, cell) {
     if (this._warnIfNotOk(res, cell)) return;
     this.showStatus('🔨 耕地完成', 600);
   },
   _toDirtEffect(row, col) {
-    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.toDirt(r, c),
-      { colors: ['#8a5a2b', '#a9763c', '#6b4423'], count: 12, speed: 75, gravity: 300 });
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => Farm.toDirt(r, c), (res) => {
+      this.markFarmDirty();
+      this._spawnBurst(row, col, { colors: ['#8a5a2b', '#a9763c', '#6b4423'], count: 12, speed: 75, gravity: 300 });
+    });
   },
   _toDirtDone(res, cell) {
     if (this._warnIfNotOk(res, cell)) return;
@@ -1677,15 +1997,13 @@ const UI = {
     this.showStatus(dirtIcon + ' 锄成了泥土，再锄一次就能耕地', 800);
   },
   _chopEffect(row, col, tree, src) {
-    const res = this._tryAction(DATA.TOOL_COST.axe, () => src.chop(row, col));
-    if (res.ok) {
+    return this._actionEffect(row, col, DATA.TOOL_COST.axe, (r, c) => src.chop(r, c), (res) => {
       Player.addWood(res.wood);
       if (res.saplings) Player.addSaplings(res.saplings);
       this.markFarmDirty();
       this._spawnBurst(row, col, { colors: ['#6b4a2b', '#8a5a2b', '#3d6b2a', '#5a8a3a'], count: 22, speed: 130, gravity: 340, spread: Math.PI * 2 });
       this._shakeIt(4, 300);
-    }
-    return res;
+    }, { isOk: (r) => r.ok });
   },
   _chopDone(res) {
     if (this._fail(res, '❌ 无法砍树')) return;
@@ -1698,14 +2016,12 @@ const UI = {
     this.showStatus(`🪓 砍倒树，获得木头×${res.wood} ${logIcon}${extra}`, 1500);
   },
   _plantSaplingEffect(row, col) {
-    const res = TreeFarm.plantSapling(row, col);
-    if (res.ok) {
+    return this._actionEffect(row, col, null, (r, c) => TreeFarm.plantSapling(r, c), (res) => {
       Player.useSapling();
       this._updateHeldSlot();
       this.markFarmDirty();
       this._spawnBurst(row, col, { colors: ['#3d6b2a', '#5a8a3a', '#8a5a2b'], count: 10, speed: 55, gravity: 240 });
-    }
-    return res;
+    }, { isOk: (r) => r.ok });
   },
   _plantSaplingDone(res) {
     if (this._fail(res, `❌ ${res ? res.reason : '失败'}`)) return;
@@ -1794,6 +2110,14 @@ const UI = {
     if (cell && cell.crop) { this.showStatus('🌱 作物还没成熟，再等等', 600); return; }
     // 点击即判定：已耕地（非成熟作物）不能再锄，立刻提示、不进进度条
     if (cell && cell.tilled) { this.showStatus('这块地已经耕过了', 500); return; }
+    // 花朵格子：先锄花（视觉上花朵替换草方块，grass=0/flowers>0；详见 Farm.clearFlower）
+    const fstate = (Farm.flowers && Farm.flowers[row]) ? (Farm.flowers[row][col] || 0) : 0;
+    if (fstate > 0) {
+      this._startBusy('锄花', null,
+        () => this._clearFlowerEffect(row, col),
+        (res) => this._clearFlowerDone(res, fstate)); // fstate=清除前捕获的花种，用于提示图标/名字
+      return;
+    }
     // 有草(绿/黄)的地面：必须先除掉草 → 变回普通草方块，之后才能锄地
     const gstate = (Farm.grass && Farm.grass[row]) ? (Farm.grass[row][col] || 0) : 0;
     if (gstate === 1 || gstate === 2) {
@@ -1845,22 +2169,15 @@ const UI = {
       }
       return;
     }
-    // 锄头：树场根系太密，无法耕成耕地，只能翻出「缠根泥土」
+    // 锄头：与主农场同步的分支逻辑（先除草、再尝试翻出缠根泥土带概率）；不产生耕地、不弹窗
     if (tool === 'hoe') {
-      const res = TreeFarm.till(row, col);
-      if (res.ok) {
-        this.markFarmDirty();
-        this.showStatus('🌳 此处的根太多，翻出了缠根泥土', 1300);
-      } else {
-        this.showStatus(`❌ ${res.reason}`, 800);
-      }
+      this._handleTreeFarmHoeClick(row, col);
       this.render();
       return;
     }
     // 空格：种树苗（需先在背包选中「树苗」，或快捷键切到树苗工具）
     if (tool === 'sapling') {
-      // 点击即判定：干不了直接提示、不进进度条
-      if (TreeFarm.getTreeAt(row, col)) { this.showStatus('🪴 这里已经有树了', 1000); this.render(); return; }
+      // 点击即判定：干不了直接提示、不进进度条（有树的情况已被上方 if(tree) 拦截）
       if (!Player.hasSapling()) {
         this.showStatus('🪴 没有树苗，去砍树掉落 1~3 个再来种', 1200);
       } else {
@@ -1874,6 +2191,51 @@ const UI = {
     if (tool === 'axe') this.showStatus('🪓 这里没有树可砍', 800);
     else this.showStatus('🪴 树场里：按 3 切斧头砍树，或选「树苗」点击空格种植', 1000);
     this.render();
+  },
+
+  /** 树场锄头点击：与主农场 _handleHoeClick 同步的分支逻辑，但不产生耕地（树场根系太密，只翻出缠根泥土，且带概率）。
+   *  - 有草(绿/黄) → 除草（与主农场一致，走「正在除草中」进度条）
+   *  - 已翻出缠根泥土 → 点击即拦截，提示一句，不再重复锄（用户「这个泥土怎么还可以再被锄一次，不合理」）
+   *  - 其余地面（草方块/裸土）→「正在锄地中」进度条 → ROOT_CHANCE 概率翻出缠根泥土，失败可重试
+   *  R78：恢复 _startBusy 的「正在 X 中…」指示器（用户要求把这个弹窗展示出来），
+   *  这样锄头那点耗时是有进度条可见的，不再「感觉有延迟」；R77 去掉的是**成功结果那条 toast**，仍然不加回来。 */
+  _handleTreeFarmHoeClick(row, col) {
+    const gstate = (TreeFarm.grass && TreeFarm.grass[row]) ? (TreeFarm.grass[row][col] || 0) : 0;
+    if (gstate === 1 || gstate === 2) {                       // 有草 → 先除草
+      this._startBusy('除草', 'wooden_hoe',
+        () => this._tfClearGrassEffect(row, col),
+        (res) => { if (res !== 'ok') this.showStatus('❌ 无法除草', 600); });
+      return;
+    }
+    if (TreeFarm.getRootedAt(row, col)) {                     // 已翻出缠根泥土：不能再锄
+      this.showStatus('这块地已经翻过了', 500);
+      return;
+    }
+    this._startBusy('锄地', 'wooden_hoe',
+      () => this._tfTillEffect(row, col),
+      (res) => this._tfTillDone(res));
+  },
+
+  /** 树场除草：与主农场 _clearGrassEffect 同构（同样走 _tryAction 扣体力），只是作用于 TreeFarm。 */
+  _tfClearGrassEffect(row, col) {
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => TreeFarm.clearGrass(r, c), () => {
+      this.markFarmDirty();
+      this._spawnBurst(row, col, { colors: ['#7bbf4a', '#9bd45a', '#cfe89a'], count: 10, speed: 60, gravity: 200, dir: -Math.PI / 2, spread: Math.PI * 1.4 });
+    });
+  },
+
+  /** 树场锄地：TreeFarm.till 返回 {ok} / {ok:false,reason}，故用 isOk 取 r.ok（不是主农场那套 'ok' 字符串）。 */
+  _tfTillEffect(row, col) {
+    return this._actionEffect(row, col, DATA.TOOL_COST.hoe, (r, c) => TreeFarm.till(r, c), () => {
+      this.markFarmDirty();
+      this._spawnBurst(row, col, { colors: ['#6b4a2b', '#8a5a2b', '#3d6b2a'], count: 12, speed: 75, gravity: 300 });
+    }, { isOk: (r) => !!(r && r.ok) });
+  },
+
+  _tfTillDone(res) {
+    if (res && res.ok) return;                                // 成功：不弹结果 toast（R77 要求），靠贴图 + 粒子表现
+    // 失败只在「根系太密」这种可重试的情况提示一句，否则玩家不知道为什么点了没反应
+    if (res && res.reason === 'root_too_dense') this.showStatus('🪵 根系太密，没锄动，再试一次', 700);
   },
 
   /** 进入“正在 X 中”状态：体力越低耗时越长（效率越低），期间锁输入。
@@ -1952,6 +2314,10 @@ const UI = {
       '🌱': 'wheat_seeds',    // 幼苗（复用小麦种子贴图，无需新素材）
       '🪓': 'wooden_axe',      // 斧头（砍树 / 工具名）
       '🪴': 'oak_sapling',     // 树苗（没树苗提示）
+      '🪵': 'wooden_hoe',      // 根系太密（锄头失败提示）：复用锄头贴图
+      '🌳': 'oak_sapling',     // 树场有树提示：复用树苗贴图
+      '🌟': 'nether_star',     // 任务达成（Quest.trigger 的达成提示）
+      '🔒': 'Icon_Locked',     // 未解锁 / 需先满足前置
     };
     for (const [emoji, key] of Object.entries(iconMap)) {
       let src = '';
@@ -2065,6 +2431,452 @@ const UI = {
     const overlay = document.getElementById('day-summary');
     if (this._summaryTimer) { clearTimeout(this._summaryTimer); this._summaryTimer = null; }
     overlay.className = 'panel-hidden';
+  },
+
+
+  // ===== 任务书（Advancement / 进度树）=====
+  _questOpen: false,
+
+  openQuest() {
+    if (this._questOpen) { this.closeQuest(); return; }
+    this._questOpen = true;
+    const ov = document.getElementById('quest-overlay');
+    if (ov) {
+      ov.className = 'overlay-visible';
+      ov.onclick = (e) => { if (e.target === ov) this.closeQuest(); };
+    }
+    // 打开时强制重置：回到默认分类、丢弃上次平移/缩放，视图对准根节点。
+    // 不保留上次浏览位置，也不保留上次选中的分类页签（进入界面即「归位到根节点」）。
+    UI._questTab = null;            // 回到默认分类（_renderQuest 按 tabs[0] 取）
+    UI._questPan = null;            // 丢弃上次平移与缩放，重新初始化
+    this._questCenterOnRoot = true; // 视图强制对准根节点
+    this._renderQuest();
+  },
+
+  closeQuest() {
+    if (!this._questOpen) return;
+    const ov = document.getElementById('quest-overlay');
+    if (ov) ov.className = 'overlay-hidden';
+    const t = document.querySelector('#quest-overlay .quest-tip');
+    if (t) t.classList.remove('show');
+    const tt = document.getElementById('quest-tab-tip');
+    if (tt) tt.classList.remove('show');
+    this._questOpen = false;
+    // 背包仍开着，不关（关闭任务书即回到背包）
+  },
+
+  _renderQuest() {
+    const tree = document.getElementById('quest-tree');
+    if (!tree) return;
+    const panel = document.getElementById('quest-panel');
+    const R = (typeof ASSETS !== 'undefined' && ASSETS.registry) || {};
+    tree.innerHTML = '';
+    // 背景：固定贴在面板上（contain 居中），不参与拖动；
+    // 拖动只移动进度节点/连线所在的 #quest-tree，背景始终不动。
+    if (R['demo_background'] && panel) {
+      panel.style.backgroundImage = `url(${R['demo_background']})`;
+      panel.style.backgroundSize = 'contain';
+      panel.style.backgroundPosition = 'center';
+      panel.style.backgroundRepeat = 'no-repeat';
+    }
+
+    const SRC = (typeof DATA !== 'undefined' && DATA.QUESTS) ? DATA.QUESTS : [];
+    // 完成态由 Quest 模块按真实进度判定（root 为 always，开局即亮）；用副本避免污染 DATA
+    const ADV = SRC.map(n => ({
+      ...n,
+      done: (typeof Quest !== 'undefined') ? Quest.isDone(n.id) : (n.done || false),
+    }));
+    // 选项卡（分类页签）：每个 tab 只显示该分类的节点（无总览页）
+    const tabs = (typeof DATA !== 'undefined' && DATA.QUEST_TABS) ? DATA.QUEST_TABS : [];
+    if (!UI._questTab || UI._questTab === 'overview') UI._questTab = (tabs[0] && tabs[0].id) || 'core';
+    const activeTab = UI._questTab;
+    const vis = ADV.filter(n => n.cat === activeTab);
+    // 可见节点包围盒 + 质心：用于把当前页节点居中到面板视口（避免散在四角「一左一右一上一下」）
+    if (vis.length) {
+      let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
+      vis.forEach(n => { mnx = Math.min(mnx, n.x); mxx = Math.max(mxx, n.x); mny = Math.min(mny, n.y); mxy = Math.max(mxy, n.y); });
+      // cx/cy 用包围盒中心（不是节点坐标均值）：分布偏斜时（如 root 在最左），
+      // 居中后整块节点才能落在背景框内；用均值会把左边缘节点推出框外被裁切。
+      this._questBBox = { minX: mnx, maxX: mxx, minY: mny, maxY: mxy, cx: (mnx + mxx) / 2, cy: (mny + mxy) / 2 };
+    } else {
+      this._questBBox = null;
+    }
+    this._renderQuestTabs(tabs, activeTab);
+    const byId = {};
+    vis.forEach(a => { byId[a.id] = a; });
+
+    // 坐标空间固定为 760×717（与面板 176:166 一致）；框为正方形，图标居中，文字在框右侧（放不下则翻左）
+    const PW = 760, PH = 717, FS = 52, ICON = 34, GAP = 8, TXT_W = 120;
+
+    // 1) 连线层：纯代码绘制的 SVG 折线（不再用 tab 贴图），完成路径染绿
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'quest-links');
+    // viewBox 用 #quest-tree 的真实像素尺寸（而非固定 760×717）：节点方框按树像素定位，
+    // 只有 viewBox 与树像素 1:1，直线端点才会精确落在节点中心（窗口非 760 宽时也不错位）。
+    const tw = tree.clientWidth || PW, th = tree.clientHeight || PH;
+    svg.setAttribute('viewBox', `0 0 ${tw} ${th}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    let li = 0;
+    vis.forEach(n => {
+      if (!n.parent || !byId[n.parent]) return;
+      const p = byId[n.parent];
+      const path = document.createElementNS(NS, 'path');
+      // 直连线：父节点中心 → 子节点中心，一条斜直线（用户要求「直直的，不要弯」）
+      path.setAttribute('d', `M ${p.x} ${p.y} L ${n.x} ${n.y}`);
+      path.setAttribute('vector-effect', 'non-scaling-stroke');
+      path.setAttribute('pathLength', '100');   // 统一虚拟长度，配合 CSS stroke-dashoffset 实现「自己画出来」动画
+      path.setAttribute('class', 'q-link' + ((p.done && n.done) ? ' done' : ''));
+      path.style.setProperty('--i', li++);
+      svg.appendChild(path);
+    });
+    tree.appendChild(svg);
+
+    // 悬停提示：默认只显示节点名，悬停节点弹出「标题 + 详细描述」（避免永久文字重叠）
+    // 挂在 overlay 上，用视口坐标定位，不受 tree 缩放/面板 overflow 裁切影响
+    let tip = document.querySelector('#quest-overlay .quest-tip');
+    if (tip) tip.remove();
+    tip = document.createElement('div');
+    tip.className = 'quest-tip';
+    if (R['enchantment']) tip.style.backgroundImage = `url(${R['enchantment']})`;
+    const _ov = document.getElementById('quest-overlay');
+    if (_ov) _ov.appendChild(tip);
+
+    // ===== 进度树 = 有向图：入度(前置) / 出度(可解锁) =====
+    // 图的边有两类：
+    //   1) 树边：child.parent → child（同分类内的推进）
+    //   2) 网关边：tab.prereq → 该支线的入口节点（主线网关节点解锁整条支线）
+    // 支线入口节点（父节点不在本分类内）的前置一律改判为网关节点，
+    // 否则悬停会显示 root 这种「看不见也点不到」的跨页父节点，反而误导。
+    const allById = {};
+    ADV.forEach(a => { allById[a.id] = a; });
+    const tabLabel = {};
+    tabs.forEach(t => { tabLabel[t.id] = t.label; });
+    const gatewayOf = {};   // 支线入口节点 id → 解锁它的主线网关节点 id
+    tabs.forEach(t => {
+      if (!t.prereq || !allById[t.prereq]) return;
+      ADV.forEach(n => {
+        if (n.cat !== t.id) return;
+        const p = n.parent ? allById[n.parent] : null;
+        if (!p || p.cat !== n.cat) gatewayOf[n.id] = t.prereq;
+      });
+    });
+    // 入度：直接前驱（网关边优先于树边）
+    const preOf = (n) => {
+      const g = gatewayOf[n.id];
+      if (g) return [allById[g]];
+      const p = n.parent ? allById[n.parent] : null;
+      return p ? [p] : [];
+    };
+    // 出度：树边后继 + 由本节点作为网关解锁的支线入口
+    const nextOf = (n) => ADV.filter(c => (gatewayOf[c.id] ? gatewayOf[c.id] === n.id : c.parent === n.id));
+    // 完成/未完成状态图标一律用素材库贴图（confirm 绿勾 / Icon_Locked 锁），不用 emoji
+    const ICO_OK = this._iconHTML('confirm', 'q-st', '已完成');
+    const ICO_LOCK = this._iconHTML('Icon_Locked', 'q-st', '未完成');
+    // 关联节点小标签：完成态用色区分；跨分类的额外标注所属支线名
+    const chip = (m) => `<span class="q-node${m.done ? ' ok' : ''}">${m.done ? ICO_OK : ICO_LOCK}${m.title}`
+      + (m.cat !== activeTab ? `<i>·${tabLabel[m.cat] || m.cat}</i>` : '') + '</span>';
+
+    const showTip = (node, el) => {
+      const r = el.getBoundingClientRect();
+      const tr = node.track || {};
+      let req;
+      if (tr.k === 'always') {
+        req = node.done ? (ICO_OK + ' 起始任务（已完成）') : '起始任务';
+      } else if (tr.k === 'ownTool') {
+        const has = !!(typeof Player !== 'undefined' && Player.ownedTools && Player.ownedTools[tr.tool]);
+        req = (has ? ICO_OK + ' 已拥有 — ' : ICO_LOCK + ' 需先拥有 — ') + (node.desc || ('工具：' + tr.tool));
+      } else {
+        // 累计型：实时进度 = min(已累计, 目标)，让悬停明确显示「详细完成要求 + 当前进度」
+        const cur = (typeof Quest !== 'undefined') ? Math.min(Quest.stats[tr.k] || 0, tr.n) : 0;
+        req = `完成要求：${node.desc || ''}<br>进度：<b>${cur} / ${tr.n}</b>${node.done ? ' ' + ICO_OK + ' 已完成' : ''}`;
+      }
+      // 有向图关系：入度=前置（谁解锁了我），出度=可解锁（我解锁了谁）
+      const pre = preOf(node), nxt = nextOf(node);
+      let graph = '';
+      if (pre.length) graph += `<div class="quest-gr"><b>前置</b>${pre.map(chip).join('')}</div>`;
+      if (nxt.length) graph += `<div class="quest-gr"><b>可解锁</b>${nxt.map(chip).join('')}</div>`;
+      tip.innerHTML = `<div class="quest-ttl">${node.title}</div><div class="quest-ds">${req}</div>${graph}`;
+      tip.classList.add('show');
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let left = r.right + 10, top = r.top + r.height / 2 - th / 2;
+      if (left + tw > window.innerWidth - 8) left = r.left - 10 - tw;
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+      if (top + th > window.innerHeight - 8) top = window.innerHeight - 8 - th;
+      tip.style.left = left + 'px'; tip.style.top = top + 'px';
+    };
+    const hideTip = () => tip.classList.remove('show');
+
+    // 2) 任务节点：正方形框(obtained/unobtained 区分完成) + 居中图标 + 文字
+    vis.forEach((n, i) => {
+      const frame = document.createElement('div');
+      frame.className = 'quest-frame';
+      frame.style.left = (n.x - FS / 2) + 'px';
+      frame.style.top = (n.y - FS / 2) + 'px';
+      frame.style.width = FS + 'px';
+      frame.style.height = FS + 'px';
+      const frameKey = n.challenge
+        ? 'Advancement_Challenge_Frame_' + (n.done ? 'Obtained' : 'Unobtained')
+        : (n.done ? 'advancement_task_frame_obtained' : 'advancement_task_frame_unobtained');
+      frame.style.backgroundImage = `url(${R[frameKey]})`;
+      tree.appendChild(frame);
+
+      const icSize = (n.id === 'root') ? 44 : ICON;
+      const ic = document.createElement('img');
+      ic.className = 'quest-ic';
+      ic.style.width = icSize + 'px';
+      ic.style.height = icSize + 'px';
+      ic.style.left = (n.x - icSize / 2) + 'px';
+      ic.style.top = (n.y - icSize / 2) + 'px';
+      ic.src = R[n.icon] || '';
+      tree.appendChild(ic);
+
+      const txt = document.createElement('div');
+      txt.className = 'quest-txt';
+      // 文字放在框正下方居中：避免同排节点左右标签互相重叠（side 布局在 160px 间距下必重叠）
+      txt.style.width = TXT_W + 'px';
+      txt.style.left = (n.x - TXT_W / 2) + 'px';
+      txt.style.top = (n.y + FS / 2 + 6) + 'px';
+      txt.style.textAlign = 'center';
+      txt.innerHTML = `<div class="quest-ttl">${n.title}</div>`;
+      tree.appendChild(txt);
+
+      frame.style.cursor = 'help';
+      frame.addEventListener('mouseenter', () => showTip(n, frame));
+      frame.addEventListener('mouseleave', hideTip);
+      // 进场 stagger：节点三件套(框/图标/文字)一起按序号 --i 错峰入场；动画结束移除 .qenter，交还 hover transform 控制
+      [frame, ic, txt].forEach(el => {
+        el.classList.add('qenter');
+        el.style.setProperty('--i', i);
+        el.addEventListener('animationend', () => el.classList.remove('qenter'), { once: true });
+      });
+    });
+
+    // 可见内容「真实包围盒」：含 方框(frame) + 图标(ic) + 文字标签(txt) 的全部渲染范围，
+    // 不止节点圆心。文字标签在框正下方(n.y+FS/2+6)，方框比圆心大 FS/2；只按圆心夹取会让
+    // 标签/边框在拖到极值时漏进上下暗边带（即「超出背景」）。用真实包围盒居中+夹取，杜绝漏出。
+    {
+      const els = tree.querySelectorAll('.quest-frame, .quest-ic, .quest-txt');
+      if (els.length) {
+        let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
+        els.forEach(el => {
+          const l = el.offsetLeft, t = el.offsetTop, r = l + el.offsetWidth, b = t + el.offsetHeight;
+          if (l < mnx) mnx = l; if (r > mxx) mxx = r;
+          if (t < mny) mny = t; if (b > mxy) mxy = b;
+        });
+        this._questBBox = { minX: mnx, maxX: mxx, minY: mny, maxY: mxy, cx: (mnx + mxx) / 2, cy: (mny + mxy) / 2 };
+      } else {
+        this._questBBox = null;
+      }
+    }
+
+    // 拖拽平移：面板为视口，内部树放大(scale)后超出窗口，按住拖动浏览（仿 Minecraft 进度树）
+    if (!UI._questPan) UI._questPan = { tx: 0, ty: 0, scale: 1.2 };
+    const P = UI._questPan;
+    if (panel) {
+      // 背景可视区：demo_background 以 contain 贴在面板上（宽图按宽适配、居中），
+      // 面板上下会留出暗边带。节点/连线须留在「背景可视区」内，不能拖进上下暗边带（否则显得「超出背景」）。
+      const bgRect = () => {
+        const vw = panel.clientWidth, vh = panel.clientHeight;
+        const Rr = (typeof ASSETS !== 'undefined' && ASSETS.registry) || {};
+        const url = Rr['demo_background'];
+        if (!url) return { x: 0, y: 0, w: vw, h: vh };
+        if (!this._questBgImg) {
+          const im = new Image();
+          im.onload = () => { this._questBgRatio = im.naturalHeight / im.naturalWidth; };
+          im.src = url; this._questBgImg = im;
+        }
+        const ratio = this._questBgRatio || (1024 / 1528); // 兜底：固定素材 1528×1024
+        const PAD = 8; // 留出安全边距：内容夹取到「比背景再内缩 8px」的带内，吸收亚像素取整，确保绝不漏进暗边带
+        let w, h;
+        if (ratio <= vh / vw) { w = vw; h = vw * ratio; } // 宽图：按宽适配
+        else { h = vh; w = vh / ratio; }                  // 高图：按高适配
+        const bx = (vw - w) / 2, by = (vh - h) / 2;
+        return { x: bx + PAD, y: by + PAD, w: w - 2 * PAD, h: h - 2 * PAD };
+      };
+      // 裁切容器：把进度树限制在「背景可视区」矩形（与 demo_background 的 contain 区域一致）内。
+      // 目的：让树可以比视口更大、用拖拽平移浏览（参考我的世界进度树——树大于屏幕、拖拽漫游），
+      // 同时绝不拖进上下/左右暗边带（被这里的 overflow:hidden 挡在背景图范围内，不会溢出到暗边）。
+      // 背景图本身仍是 contain（未改用户要求的显示方式），只是给树加了一层「按背景区域裁切」的窗口。
+      let clip = document.getElementById('quest-tree-clip');
+      if (!clip) {
+        clip = document.createElement('div');
+        clip.id = 'quest-tree-clip';
+        panel.insertBefore(clip, tree);
+        clip.appendChild(tree); // tree 移入裁切容器（之后仍按 id 取到，不必重建）
+      }
+      const _band = bgRect();
+      clip.style.position = 'absolute';
+      clip.style.left = _band.x + 'px';
+      clip.style.top = _band.y + 'px';
+      clip.style.width = _band.w + 'px';
+      clip.style.height = _band.h + 'px';
+      clip.style.overflow = 'hidden';
+      clip.style.pointerEvents = 'none'; // 拖拽事件照常冒泡给 panel 处理
+      // tree 原点对齐面板(0,0)：左/上偏移 -_band，使节点坐标(n.x,n.y)仍对应面板像素（平移/夹取数学不变）
+      tree.style.position = 'absolute';
+      tree.style.left = (-_band.x) + 'px';
+      tree.style.top = (-_band.y) + 'px';
+      tree.style.right = 'auto';
+      tree.style.bottom = 'auto';
+      tree.style.width = panel.clientWidth + 'px';
+      tree.style.height = panel.clientHeight + 'px';
+      // 自适应缩放：采用「覆盖(cover)」而非「包含(contain)」——让内容至少铺满背景的一个维度、
+      // 并在另一维度超出，从而留出拖拽平移的余地（我的世界风格：树比屏幕大，拖拽漫游）。
+      // 下限 1.25（保证节点够大、不被压成小点）、上限 2.0（防节点大得离谱）；当前四分类均落在区间内。
+      if (this._questBBox) {
+        const cw = (this._questBBox.maxX - this._questBBox.minX) || 1;
+        const ch = (this._questBBox.maxY - this._questBBox.minY) || 1;
+        P.scale = Math.min(2.0, Math.max(1.25, _band.w / cw, _band.h / ch));
+      }
+      const clampPan = () => {
+        const vw = panel.clientWidth, vh = panel.clientHeight;
+        const bb = this._questBBox;
+        if (bb) {
+          // 夹取但不强制居中：让节点整体留在「背景可视区」内即可（暗边带不参与夹取）。
+          // 这样拖拽平移不会被「居中」瞬间复位，又不会把节点拖进上下的暗边带（超出背景）。
+          const band = bgRect();
+          const txMin = band.x - bb.minX * P.scale, txMax = band.x + band.w - bb.maxX * P.scale;
+          const tyMin = band.y - bb.minY * P.scale, tyMax = band.y + band.h - bb.maxY * P.scale;
+          // 内容 ≤ 背景：txMin<txMax，夹在 [txMin,txMax]（不越出背景可视区）；
+          // 内容 > 背景（我的世界风格：树比视口大）：txMin>txMax，取 [txMax,txMin] 让树始终覆盖背景、可拖拽平移。
+          // 两情况统一用 min/max 夹取，拖拽位移绝不会被「居中」复位（修复内容>背景时拖拽失效）。
+          const txLo = Math.min(txMin, txMax), txHi = Math.max(txMin, txMax);
+          const tyLo = Math.min(tyMin, tyMax), tyHi = Math.max(tyMin, tyMax);
+          P.tx = Math.min(txHi, Math.max(txLo, P.tx));
+          P.ty = Math.min(tyHi, Math.max(tyLo, P.ty));
+        } else {
+          const minX = vw - PW * P.scale, minY = vh - PH * P.scale;
+          P.tx = Math.min(0, Math.max(minX, P.tx));
+          P.ty = Math.min(0, Math.max(minY, P.ty));
+        }
+      };
+      const apply = () => { tree.style.transform = `translate(${P.tx}px,${P.ty}px) scale(${P.scale})`; };
+      // 打开时（或切换分类时）把视图对准**根节点**——强制重置到任务树起点；
+      // 若当前分类页不含根节点（根只在 core 页），退回对准「包围盒中心」。
+      // 对准「背景可视区」中心（不是面板中心）：节点不偏到上下暗边带。
+      if ((this._questCenterOnRoot || !P.centered) && this._questBBox) {
+        const band = bgRect();
+        const root = vis.find(n => n.id === 'root');
+        const fx = root ? root.x : this._questBBox.cx;
+        const fy = root ? root.y : this._questBBox.cy;
+        P.tx = (band.x + band.w / 2) - fx * P.scale;
+        P.ty = (band.y + band.h / 2) - fy * P.scale;
+        P.centered = true;
+        this._questCenterOnRoot = false;
+      }
+      if (!panel.dataset.panBound) {
+        panel.dataset.panBound = '1';
+        let sx = 0, sy = 0, stx = 0, sty = 0, dragging = false;
+        panel.addEventListener('pointerdown', (e) => {
+          if (e.button !== 0) return;
+          dragging = true; sx = e.clientX; sy = e.clientY; stx = P.tx; sty = P.ty;
+          panel.classList.add('grabbing');
+          try { panel.setPointerCapture(e.pointerId); } catch (_) {}
+          e.preventDefault();
+        });
+        panel.addEventListener('pointermove', (e) => {
+          if (!dragging) return;
+          P.tx = stx + (e.clientX - sx);
+          P.ty = sty + (e.clientY - sy);
+          clampPan(); apply();
+        });
+        const end = (e) => {
+          if (!dragging) return;
+          dragging = false; panel.classList.remove('grabbing');
+          try { panel.releasePointerCapture(e.pointerId); } catch (_) {}
+        };
+        panel.addEventListener('pointerup', end);
+        panel.addEventListener('pointercancel', end);
+      }
+      clampPan(); apply();
+    }
+  },
+
+  // 渲染顶部选项卡条：用 advancement_tab_* 小方格贴图作底图，选中态用 *_Selected；
+  // 依在数组中的次序拼成 Above_Left / Above_Middle×(N-2) / Above_Right 的小方格条。
+  _renderQuestTabs(tabs, activeTab) {
+    if (!tabs || !tabs.length) return;
+    const R = (typeof ASSETS !== 'undefined' && ASSETS.registry) || {};
+    let bar = document.getElementById('quest-tabs');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'quest-tabs';
+      const wrap = document.getElementById('quest-frame-wrap');
+      if (wrap) wrap.appendChild(bar);
+    }
+    bar.innerHTML = '';
+    // 页签悬停弹窗：复用 Enchantment 弹窗样式，仅悬停时显示该支线的「前置/解锁条件」这类详情。
+    // 短名仍常驻在页签上；弹窗只补"玩家该完成什么才能解锁"这种信息（不重复短名）。
+    let tabTip = document.getElementById('quest-tab-tip');
+    if (!tabTip) {
+      tabTip = document.createElement('div');
+      tabTip.id = 'quest-tab-tip';
+      tabTip.className = 'quest-tab-tip';
+      if (R['enchantment']) tabTip.style.backgroundImage = `url(${R['enchantment']})`;
+      const _ov = document.getElementById('quest-overlay');
+      if (_ov) _ov.appendChild(tabTip);
+    }
+    const tabTipHTML = (t) => {
+      if (t.prereq && typeof Quest !== 'undefined' && !Quest.isDone(t.prereq)) {
+        const pn = (typeof DATA !== 'undefined') ? DATA.QUESTS.find(q => q.id === t.prereq) : null;
+        const pt = pn ? pn.title : t.prereq;
+        return `<div class="quest-ttl">${t.label}</div><div class="quest-ds">需完成【${pt}】解锁</div>`;
+      }
+      const nodes = (typeof DATA !== 'undefined') ? DATA.QUESTS.filter(n => n.cat === t.id) : [];
+      const done = nodes.filter(n => typeof Quest !== 'undefined' && Quest.isDone(n.id)).length;
+      return `<div class="quest-ttl">${t.label}</div><div class="quest-ds">完成进度 ${done} / ${nodes.length}</div>`;
+    };
+    const showTabTip = (t, el) => {
+      const r = el.getBoundingClientRect();
+      tabTip.innerHTML = tabTipHTML(t);
+      tabTip.classList.add('show');
+      const tw = tabTip.offsetWidth, th = tabTip.offsetHeight;
+      let left = r.left + r.width / 2 - tw / 2;
+      let top = r.bottom + 8;
+      if (left < 8) left = 8;
+      if (left + tw > window.innerWidth - 8) left = window.innerWidth - 8 - tw;
+      if (top + th > window.innerHeight - 8) top = r.top - 8 - th; // 下方放不下则翻到上方
+      if (top < 8) top = 8;
+      tabTip.style.left = left + 'px';
+      tabTip.style.top = top + 'px';
+    };
+    const hideTabTip = () => tabTip.classList.remove('show');
+    tabs.forEach(t => {
+      const locked = !!(t.prereq && typeof Quest !== 'undefined' && !Quest.isDone(t.prereq));
+      const btn = document.createElement('div');
+      btn.className = 'quest-tab' + (t.id === activeTab ? ' active' : '') + (locked ? ' locked' : '');
+      const spr = R[t.id === activeTab ? t.selected : t.tab];
+      if (spr) btn.style.backgroundImage = `url(${spr})`;
+      // 选项卡上的代表物图标（如 种植=小麦种子、采集=原木、工具=木斧头）
+      // 仅核心玩法（新换的耕地+锄头图）放大显示，其余保持原尺寸
+      const icCls = (t.icon && R[t.icon]) ? (t.id === 'core' ? 'quest-tab-ic quest-tab-ic--core' : 'quest-tab-ic') : '';
+      const ic = icCls ? `<img class="${icCls}" src="${R[t.icon]}">` : '';
+      // 未解锁的支线选项卡：叠加锁图标（Icon_Locked），明确"锁住、暂不可进"。
+      // 详情（解锁条件/进度）放进悬停弹窗，不常驻显示；页签本身只放图标/锁/短名。
+      const lock = (locked && R['Icon_Locked']) ? `<img class="quest-tab-lock" src="${R['Icon_Locked']}">` : '';
+      // 分类标签文字常驻显示（名字短，直接显示即可）；解锁条件等详情只在悬停弹窗里
+      btn.innerHTML = `${ic}${lock}<span class="quest-tab-lbl">${t.label}</span>`;
+      // 阻止 tab 上的指针事件冒泡到 panel，避免触发平移拖拽
+      btn.addEventListener('pointerdown', e => e.stopPropagation());
+      btn.addEventListener('mouseenter', () => showTabTip(t, btn));
+      btn.addEventListener('mouseleave', hideTabTip);
+      btn.addEventListener('click', () => {
+        if (locked) {
+          // 未解锁：抖动即可（解锁条件在悬停弹窗里告知玩家，不常驻显示）
+          btn.classList.remove('shake');
+          void btn.offsetWidth;
+          btn.classList.add('shake');
+          return;
+        }
+        if (UI._questTab === t.id) return;
+        UI._questTab = t.id;
+        this._questCenterOnRoot = true; // 切换分类后把视图对准该组节点（根不在该页则退回包围盒中心）
+        this._renderQuest();
+      });
+      bar.appendChild(btn);
+    });
   },
 
 };
