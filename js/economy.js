@@ -4,7 +4,7 @@
  *
  * ── 结构导航 ──
  *   ① 购买（种子） buySeed
- *   ② 出售        sellAll / sellCrop / sellCropUnits
+ *   ② 出售        sellCropUnits
  *   ③ 购买（工具） canBuyTool / buyTool
  *   ④ 查询        getShopList
  */
@@ -31,38 +31,6 @@ const Economy = {
   // ─────────────────────────────────────────────
   // ② 出售
   // ─────────────────────────────────────────────
-  /** 出售所有可出售的作物（种子不出售） */
-  sellAll() {
-    let total = 0;
-    const soldItems = {};
-    const toRemove = [];
-
-    for (const [cropId, count] of Object.entries(Player.inventory)) {
-      const def = DATA.CROPS[cropId];
-      if (def && def.sellPrice > 0 && count > 0) {
-        const value = def.sellPrice * count;
-        total += value;
-        soldItems[cropId] = count;
-        toRemove.push(cropId);
-      }
-    }
-
-    if (total <= 0) return { ok: false, reason: '背包里没有可出售的作物' };
-
-    Player.addMoney(total);
-    for (const id of toRemove) {
-      delete Player.inventory[id];
-    }
-    return { ok: true, total, items: soldItems };
-  },
-
-  /** 出售指定作物（背包内单格卖出全部数量） */
-  sellCrop(cropId) {
-    const r = this._resolveSellable(cropId);
-    if (!r.ok) return r;
-    return this._applySale(cropId, r.count, r);
-  },
-
   /** 按数量出售指定作物（默认 1 个；不足则全卖），用于商店「每次成交卖 1 个」 */
   sellCropUnits(cropId, n) {
     const r = this._resolveSellable(cropId);
@@ -71,7 +39,7 @@ const Economy = {
     return this._applySale(cropId, sell, r);
   },
 
-  /** 应用一次出售：加钱 + 按售出数量删除/递减背包作物，返回成交结果（sellCrop/sellCropUnits 共用，消除重复的 addMoney + inventory 改写 + 返回） */
+  /** 应用一次出售：加钱 + 按售出数量删除/递减背包作物，返回成交结果（sellCropUnits 共用，消除重复的 addMoney + inventory 改写 + 返回） */
   _applySale(cropId, sell, r) {
     const total = r.def.sellPrice * sell;
     Player.addMoney(total);
@@ -80,7 +48,7 @@ const Economy = {
     return { ok: true, total, count: sell, name: r.def.name };
   },
 
-  /** 校验某作物是否可出售，返回 { ok:true, def, count } 或 { ok:false, reason }（供 sellCrop/sellCropUnits 复用） */
+  /** 校验某作物是否可出售，返回 { ok:true, def, count } 或 { ok:false, reason }（供 sellCropUnits 复用） */
   _resolveSellable(cropId) {
     const count = Player.inventory[cropId];
     if (!count || count <= 0) return { ok: false, reason: '背包里没有该作物' };
@@ -135,6 +103,7 @@ const Economy = {
       else delete Player.inventory[need.id];
     }
     Player.ownedTools[toolId] = true;
+    if (typeof Quest !== 'undefined') Quest.trigger('ownTool', toolId); // 任务书：工匠入门
     return { ok: true, name: item.name };
   },
 };
