@@ -22,7 +22,7 @@ const Engine = {
   running: false,
   tickTimer: null,
   paused: false,
-  debugFast: false,    // 调试快进：开启后 1 秒 = 1 天（临时功能）
+  debugFast: false,    // 调试快进：开启后 0.5 秒 = 1 天（临时功能）
 
   // === 外部 hooks ===
   onHourChange: null,     // callback(hour, minute)
@@ -53,13 +53,13 @@ const Engine = {
 
   /** 内部：每分钟滴答（调试快进时改为 1 秒 = 1 天） */
   _startTick() {
-    // 调试快进：每 1 秒直接推进一整天（作物生长/浇水重置/体力恢复都在 nextDay 内完成），
+    // 调试快进：每 0.5 秒直接推进一整天（作物生长/浇水重置/体力恢复都在 nextDay 内完成），
     // 绕过 onDayEnd 结算弹窗，避免每秒弹窗打断操作。
     if (this.debugFast) {
       this.tickTimer = setTimeout(() => {
         if (!this.running || this.paused) return;
         this.nextDay();
-      }, 1000);
+      }, 500);
       return;
     }
     const msPerTick = (DATA.REAL_SECS_PER_GAME_HOUR * 1000) / 60; // 每分钟
@@ -144,7 +144,7 @@ const Engine = {
     this.paused = false;
     // 日结推进：作物生长 / 重置浇水 / 恢复体力。
     // 放这里保证“结算时时间继续走”——由 _endDay 直接调用，无需等玩家点“继续”。
-    if (typeof Farm !== 'undefined') { Farm.dailyGrow(); Farm.resetWater(); Farm.dailyGrassGrow(); }
+    if (typeof Farm !== 'undefined') { Farm.dailyGrow(); Farm.resetWater(); Farm.dailyGrassGrow(); Farm.dailyFlowerGrow(); }
     if (typeof TreeFarm !== 'undefined') { TreeFarm.dailyGrow(); TreeFarm.dailyGrassGrow(); } // 树场：树桩长回 + 补树 + 草随季节演化
     if (typeof Player !== 'undefined') { Player.restoreStamina(); }
     if (this.onNewDay) this.onNewDay(this.day, this.season, this.year);
