@@ -19,6 +19,9 @@ const Player = {
   // 资源：木头（砍树获得，暂只产不出；为后续建造/经济闭环铺路）
   wood: 0,
 
+  // 任务书：已完成任务集合（刷新即重置，与游戏整体无存档一致）
+  questsDone: {},
+
   // 资源：树苗（砍树掉落 1~3 个，可在树场种回；形成「砍树→得树苗→种树场→再砍」循环）
   saplings: 0,
 
@@ -50,6 +53,7 @@ const Player = {
       wheat: 5,  // 开局送 5 个小麦种子
     };
     this.selectedTool = 'hoe';
+    if (typeof Quest !== 'undefined') Quest.reset(); // 任务书：开局清进度
   },
 
   // ─────────────────────────────────────────────
@@ -86,6 +90,7 @@ const Player = {
   /** 加钱 */
   addMoney(amount) {
     this.money += amount;
+    if (typeof Quest !== 'undefined') Quest.trigger('earn', amount); // 任务书：小富即安
   },
 
   /** 扣钱 */
@@ -101,6 +106,7 @@ const Player = {
   /** 加木头（砍树获得） */
   addWood(amount) {
     this.wood += (amount || 0);
+    if (typeof Quest !== 'undefined') Quest.trigger('wood', amount); // 任务书：物资储备/林间建设者
   },
 
   /** 加树苗（砍树掉落） */
