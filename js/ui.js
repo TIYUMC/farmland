@@ -3131,7 +3131,8 @@ const UI = {
       ic.style.height = icSize + 'px';
       ic.style.left = (n.x - icSize / 2) + 'px';
       ic.style.top = (n.y - icSize / 2) + 'px';
-      ic.src = R[n.icon] || '';
+      // 完成态显示 confirm（绿色对勾），未完成显示原图标
+      ic.src = R[n.done ? 'confirm' : n.icon] || R[n.icon] || '';
       tree.appendChild(ic);
 
       const txt = document.createElement('div');
@@ -3157,6 +3158,7 @@ const UI = {
         }
         showTip(n);            // 刷新弹窗（已领则显示「已完成 · 奖励已领取」）
         this._renderQuest();  // 完整重绘节点：边框+图标同步更新为 done 态
+      });
       // 进场 stagger：节点三件套(框/图标/文字)一起按序号 --i 错峰入场；动画结束移除 .qenter，交还 hover transform 控制
       [frame, ic, txt].forEach(el => {
         el.classList.add('qenter');
