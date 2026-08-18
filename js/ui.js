@@ -229,7 +229,11 @@ const UI = {
 
     // 背包关闭：点击面板外区域 or 按 B / Esc
     document.getElementById('inventory-overlay').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) this.closeInventory();
+      if (e.target === e.currentTarget) {
+        // 光标上有物：先退回背包（不丢），不关；否则关闭
+        if (this._invHeld) { this._invReturnHeld(); this.renderInventory(); this._updateGhost(); }
+        else this.closeInventory();
+      }
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { this.closeInventory(); this.closeShop(); this.closeSummary(); }
@@ -256,6 +260,7 @@ const UI = {
     this._rainDrops = null;                                  // 雨滴数组懒初始化
     this._ripples = [];                                      // 雨滴落地涟漪数组（空，下雨时生成）
     this._grassShakes = [];                                  // 草丛被雨打颤数组（空，下雨时生成）
+    this._shakeSnowBaseCache = null;                          // 积雪时的草格底缓存：雪覆盖时草格底含雪，无雪时用 _grassBaseCache
     this._fallingLeaves = [];                                // 秋日落叶数组（仅秋季生成）
     this._litterGrid = null;                                // 秋日地面落叶堆：每格0~4份(每份1/4格)二维计数 grid；null=未初始化/已清空
     this._litterTintCache = null;                           // 地面落叶堆棕色染色缓存
@@ -266,6 +271,12 @@ const UI = {
     this._waterImg = new Image();
     this._waterImg.onload = () => this._buildRainSprite();
     this._waterImg.src = (typeof ASSETS !== 'undefined' && ASSETS.registry && ASSETS.registry.water) ? ASSETS.registry.water : '';
+
+    // 积雪系统（16×16 像素格逐步累积铺满）：每个雪花有固定随机落点，雪停后留在该位置。
+    this._snowGround = [];            // 地面积雪雪花 [{x, y}] 固定位置列表
+    this._snowTotal = 0;              // 积雪雪花数量（>0 才绘制）
+    this._snowTick = 0;               // 每游戏刻 +1
+    this._vegCache = null;            // 植被离屏缓存（仅草+花），在积雪层之后贴回 → 草花显示在雪之上
 
     // 初始「手中物品」显示
     this._updateHeldSlot();
@@ -335,7 +346,7 @@ const UI = {
     this._shakeX = 0; this._shakeY = 0;   // 默认无震动偏移；下方用 setTransform 绝对矩阵绘制雨/雪时需要叠回位移，避免被绝对矩阵丢弃
 
     // 切换滑场过渡：横向平移两屏，动画期间不走常规渲染
-    if (this._transition) { this._renderTransition(dt); if (this.isRaining) this._drawRain(ctx, dt); if (this._ripples && this._ripples.length) this._drawRipples(ctx, dt); this._updateHUD(); return; }  // 过渡期间不画草颤：双屏混合会让原场景坐标错乱残留在另一屏
+    if (this._transition) { this._renderTransition(dt); if (this.isRaining) this._drawRain(ctx, dt); if (this._ripples && this._ripples.length) this._drawRipples(ctx, dt); this._drawNightOverlay(ctx); this._updateHUD(); return; }  // 过渡期间不画草颤：双屏混合会让原场景坐标错乱残留在另一屏
 
     // 屏幕震动：整体平移主画布（含静态层），幅度随剩余时间衰减
     let shook = false;
@@ -360,6 +371,18 @@ const UI = {
     ctx.fillRect(-8, -8, this.canvas.width + 16, this.canvas.height + 16);
     ctx.drawImage(this._farmCache, 0, 0);
 
+    // 积雪地面层：在静态层之上、草丛颤动之下绘制（雪是地面层，草丛从雪里探出）
+    this._blitSnowGround(ctx);
+
+    // 停驻雪花老化：每帧、跨季节推进 f.age（_drawSnow 仅冬天，不能在里面推进），使春天也能 fade 消失
+    this._tickLandedSnow(dt);
+    // 停驻在地面的雪花：画在积雪地面层之上、植被层之下，所以不盖住草/花/树
+    // （飘落中的雪花仍在最上层 _drawSnow，雪在树前是合理透视）
+    if (this._snowFlakes && this._snowFlakes.some(f => f.stopped && !f._eaten)) this._drawSnowLanded(ctx);
+
+    // 植被层（草 + 花朵）：在积雪层之后贴回，使草花显示在雪之上（雪只盖住地面/作物/树，草花从雪里探出）
+    if (this._snowTotal > 0 && this._vegCache) ctx.drawImage(this._vegCache, 0, 0);
+
     // 草丛颤动：在静态层之上、雨雾蒙层/选中框/雨丝之下绘制，
     // 这样重画的草继承雨天的朦胧感，且不会盖住选中框（图层顺序修正）。
     if (this._grassShakes && this._grassShakes.length) this._drawGrassShakes(ctx, dt);
@@ -373,6 +396,7 @@ const UI = {
     // 商店：直接画在画布上，覆盖在农场之上（放大、物品贴图直接合成进 GUI）
     if (this._shopOpen) {
       this._drawShopOverlay();
+      this._drawNightOverlay(ctx);
       this._updateHUD();
       if (shook) ctx.restore();
       return;
@@ -398,12 +422,17 @@ const UI = {
 
     // 天气系统：每帧推进（雨/晴自动切换），是否下雨都需运行
     this._updateWeather();
+    // 积雪系统：每帧推进（冬天累积 / 春天融化 / 夏秋清空），是否下雪都需运行
+    // 积雪改为按「游戏刻」推进：由 Engine.onTick → UI._tickSnow() 每游戏分钟触发一次（见 main.js），不再按渲染帧，故此处不调用
     // 秋日落叶：仅秋季生成，覆盖整个世界（在下雨之上，像雨一样是画面层）
     this._updateLeaves(dt, this.canvas.width, this.canvas.height);
     this._drawLeaves(ctx, dt);
     // 视觉下雨（纯画面，R 键可手动切换）：画在最上层，覆盖整个世界与粒子
     if (this.isRaining) this._drawRain(ctx, dt);
     if (this._ripples && this._ripples.length) this._drawRipples(ctx, dt);   // 落地涟漪在雨丝之上；雨停后残留仍淡出
+
+    // 昼夜蒙层：整幅画面最顶层（含雨/雪），使夜晚明显区别于白天
+    this._drawNightOverlay(ctx);
 
     // HUD 更新
     this._updateHUD();
@@ -464,33 +493,100 @@ const UI = {
   },
 
   /** 冬日飘雪：冬季「下雨」时渲染为雪（纯视觉，复用 rain 的触发时机 isRaining）。
-   *  雪花用 snow 贴图绘制，缓慢下落 + 轻微左右摇摆 + 自转；落地不溅水圈（与雨不同，雪被地面接住）。 */
+   *  雪花用 snow 贴图绘制，缓慢下落 + 轻微左右摇摆 + 自转；每片有固定随机落点，飘到该落点即停驻（纯视觉，不消失不重生、不生成积雪）。
+   *  落点的雪花永久停驻，天上持续补充新雪花飘下，保证一直下雪（而非只第一下）。
+   *  地面积雪是独立的 _accumulateSnow 系统，与空中飘雪互不相干。 */
   _drawSnow(ctx, dt) {
     const W = this.canvas.width, H = this.canvas.height;
+    const cs = this.cellSize;
     if (!this._snowFlakes) {
-      const n = Math.max(50, Math.round((W * H) / 6000));   // 雪花数随画布面积
+      const n = Math.max(50, Math.round((W * H) / 6000));
       this._snowFlakes = [];
       for (let i = 0; i < n; i++) this._snowFlakes.push(this._newSnow(W, H, true));
     }
-    // 冬日冷白天色（比雨更亮，仅一层淡冷蓝薄雾，不压暗）
-    ctx.fillStyle = 'rgba(205,215,235,0.10)';
+    ctx.fillStyle = 'rgba(205,215,235,0.15)';
     ctx.fillRect(-8, -8, W + 16, H + 16);
-    const spr = ASSETS.get('snow');
+    // 两种飘雪贴图随机使用
+    const sprSky = ASSETS.get('snow_sky');
+    const sprSnow = ASSETS.get('snow');
     for (const f of this._snowFlakes) {
-      f.y += f.vy * dt;
-      f.phase += f.swaySpeed * dt;
-      f.rot += f.spin * dt;
-      const x = f.x + Math.sin(f.phase) * f.swayAmp;
-      if (f.y - f.size > H) { Object.assign(f, this._newSnow(W, H, false)); continue; }
-      const s = f.size;
+      if (f._eaten) continue;                       // 已被生长的积雪吃掉 → 消失，不再绘制
+      if (!f.stopped) {                                          // 飘落中：推进 + 在最上层绘制（雪在树前）
+        f.y += f.vy * dt;
+        f.phase += f.swaySpeed * dt;
+        f.rot += f.spin * dt;
+        if (f.y >= f.landY) { f.y = f.landY; f.stopped = true; }  // 飘到随机落点即停下（不消失、不重生）
+        const x = f.landX + Math.sin(f.phase) * f.swayAmp;
+        const s = f.size;
+        const ca = Math.cos(f.rot), sa = Math.sin(f.rot);
+        ctx.globalAlpha = f.alpha;
+        ctx.setTransform(ca, sa, -sa, ca, x + this._shakeX, f.y + this._shakeY);
+        const spr = f.type < 0.5 ? sprSky : sprSnow;
+        if (spr && spr.width) {
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(spr, -s / 2, -s / 2, s, s);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.fillRect(-s / 2, -1.2, s, 2.4);
+          ctx.fillRect(-1.2, -s / 2, 2.4, s);
+        }
+      }
+      // 已停驻的雪花：age 推进与 _eaten/消退检测交给 _tickLandedSnow（每帧、跨季节运行），
+      // 绘制交给 _drawSnowLanded（画在植被层之下，不盖住花草树木）。_drawSnow 仅冬天调用，不能在此推进 age。
+    }
+    // 注：被积雪吃掉的雪花移除已并入 _tickLandedSnow（跨季节每帧执行）。
+    // 持续下雪：落点的雪花永久停驻（不消失），但天上要不断有新雪花飘下来（维持 TARGET_MOVING 片在飘）
+    let moving = 0, stopped = 0;
+    for (const f of this._snowFlakes) { if (f.stopped) stopped++; else moving++; }
+    const TARGET_MOVING = Math.max(50, Math.round((W * H) / 6000));
+    const MAX_STOPPED = 600;
+    if (moving < TARGET_MOVING && stopped < MAX_STOPPED) this._snowFlakes.push(this._newSnow(W, H, false));
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+  },
+
+  /** 推进「停驻在地面上的雪花」的老化：每帧、跨季节调用（_drawSnow 仅冬天调用，不能在其内推进 age）。
+   *  f.age 随时间增加；若所在格被满格地面积雪覆盖(covered) 或 age>=FADE_DUR(8s)，标记 _eaten 消失。
+   *  视觉淡出(fade)由 _drawSnowLanded 负责，本函数只推进状态并从数组移除已吃雪花。 */
+  _tickLandedSnow(dt) {
+    if (!this._snowFlakes) return;
+    const cs = this.cellSize;
+    const FADE_DUR = 8;
+    for (const f of this._snowFlakes) {
+      if (f._eaten || !f.stopped) continue;            // 只推进「已停驻且未吃」的雪花
+      f.age = (f.age || 0) + dt;
+      const c = Math.floor(f.landX / cs), r = Math.floor(f.landY / cs);
+      const covered = this._snowGround && this._snowGround.some(s => s.c === c && s.r === r && (s.pixelStep || 1) >= cs);
+      if (covered || f.age >= FADE_DUR) f._eaten = true;
+    }
+    // 被积雪吃掉的雪花从数组移除（视觉已消失；stopped 数随之减少，补充逻辑会继续下雪）
+    if (this._snowFlakes.some(f => f._eaten)) this._snowFlakes = this._snowFlakes.filter(f => !f._eaten);
+  },
+
+  /** 绘制「停驻在地面上的雪花」——放在植被层（草/花/树，_vegCache）之下，所以不盖住花草树木。
+   *  飘落中的雪花仍在最上层（_drawSnow），雪在树前是合理透视。
+   *  停驻雪花随时间 fade：尺寸与透明度都按 (1 - age/FADE_DUR) 缩小，归零即完全消失。
+   *  本函数只读取 f.stopped && !f._eaten 的雪花绘制，状态推进交给 _tickLandedSnow（每帧跨季节）。 */
+  _drawSnowLanded(ctx) {
+    if (!this._snowFlakes) return;
+    const FADE_DUR = 8;
+    const sprSky = ASSETS.get('snow_sky');
+    const sprSnow = ASSETS.get('snow');
+    for (const f of this._snowFlakes) {
+      if (f._eaten || !f.stopped) continue;          // 只画「停驻且未被吃」的雪花
+      const fade = Math.max(0, 1 - (f.age || 0) / FADE_DUR);
+      if (fade <= 0) continue;                        // 已完全消退
+      const s = f.size * fade;                        // 随时间变小
+      const x = f.landX, y = f.landY;                 // 停在固定落点（不再 sway，已冻结）
       const ca = Math.cos(f.rot), sa = Math.sin(f.rot);
-      ctx.globalAlpha = f.alpha;
-      ctx.setTransform(ca, sa, -sa, ca, x + this._shakeX, f.y + this._shakeY);   // 省去 save/translate/rotate/restore 四次状态栈操作（视觉一致）；叠加震动偏移
+      ctx.globalAlpha = f.alpha * fade;               // 随时间变透明
+      ctx.setTransform(ca, sa, -sa, ca, x + this._shakeX, y + this._shakeY);
+      const spr = f.type < 0.5 ? sprSky : sprSnow;
       if (spr && spr.width) {
-        ctx.imageSmoothingEnabled = false;                     // 保 NEAREST，像素雪花的方块边缘不模糊
-        ctx.drawImage(spr, -s / 2, -s / 2, s, s);            // snow 贴图（15×15 八角星，2px 粗臂）
-      } else {                                               // 贴图未就绪兜底：白色加号
-        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(spr, -s / 2, -s / 2, s, s);
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
         ctx.fillRect(-s / 2, -1.2, s, 2.4);
         ctx.fillRect(-1.2, -s / 2, 2.4, s);
       }
@@ -501,19 +597,242 @@ const UI = {
 
   /** 生成一片雪花：initial=true 时随机铺满全屏；否则从顶部外侧重生。 */
   _newSnow(W, H, initial) {
-    const size = 9 + Math.random() * 13;                      // 绘制尺寸（比雨丝小、柔和）
+    const size = 15 + Math.random() * 30;       // 飘雪粒子大小 15~45（调大下限和范围，更明显）
+    const landX = Math.random() * W;            // 固定随机落点（列方向，全屏任意格）
+    const landY = Math.random() * H;            // 固定随机落点（行方向，全屏任意格）
     return {
-      x: Math.random() * W,
-      y: initial ? Math.random() * H : -12 - Math.random() * 30,
-      vy: 20 + Math.random() * 28,                            // 缓慢下落（约为雨速的 1/4）
+      landX, landY,
+      x: landX,
+      y: initial ? Math.random() * landY : -12 - Math.random() * H,   // 从屏幕上方飘下，飘到 landY 停下
+      vy: 20 + Math.random() * 28,
       size,
       phase: Math.random() * Math.PI * 2,
-      swayAmp: 7 + Math.random() * 16,                        // 左右摇摆幅度（雪比雨飘）
+      swayAmp: 7 + Math.random() * 16,
       swaySpeed: 0.7 + Math.random() * 1.1,
-      spin: (Math.random() - 0.5) * 0.7,                      // 缓慢自转
+      spin: (Math.random() - 0.5) * 0.7,
       rot: Math.random() * Math.PI * 2,
-      alpha: 0.55 + Math.random() * 0.4,
+      alpha: 0.75 + Math.random() * 0.25,       // 0.75~1.0，更实不透明
+      type: Math.random(),  // 0~1 决定用哪种飘雪贴图
     };
+  },
+
+  // ───── 积雪系统（16×16 像素格，逐步累积铺满）─────
+  // 每个雪花有固定的随机落点，雪停后留在该位置；逐渐累积直到铺满。
+
+  _ensureSnowState() {
+    // 冬天仅确保积雪数组存在（空），【不预置雪片】：
+    // 此前此处会瞬间把全屏 30% 格子预置成雪，导致「冬天一上来就有雪」。
+    // 现在雪由 _accumulateSnow 后台累积（与空中飘雪无关）；飘落雪花只做纯视觉，不生成积雪。
+    if (!this._snowGround) { this._snowGround = []; this._vegSnowTotal = -1; }
+    this._snowTotal = this._snowGround.length;
+  },
+
+  _accumulateSnow() {
+    // 下雪时：随机添加新雪片（对齐游戏格网 12×10，cellSize=cs）
+    if (!this._snowGround) return;
+    const cs = this.cellSize;
+    const cols = DATA.FARM.COLS, rows = DATA.FARM.ROWS;
+    // 每刻尝试添加若干新雪片
+    const tries = 3 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < tries; i++) {
+      if (Math.random() < 0.15) {  // 15% 概率添加一片
+        const c = Math.floor(Math.random() * cols);
+        const r = Math.floor(Math.random() * rows);
+        // 落点在格内随机 16px 对齐位置（不固定居中），最终平滑长到铺满整格
+        const sub = Math.floor(Math.random() * (cs / 16)) * 16;
+        const x = c * cs + sub, y = r * cs + sub;
+        // 检查是否已有雪片
+        const exists = this._snowGround.some(f => f.c === c && f.r === r);
+        if (!exists) {
+          this._snowGround.push({ x, y, c, r, pixelStep: 1 });
+        }
+      }
+    }
+    this._snowTotal = this._snowGround.length;
+    this._syncSnowCanvas();
+  },
+
+  _decaySnow() {
+    // 融化：把 pixelStep 减 1（1→0 则删除）。gmax 必须与 _growSnowStep 一致(=cellSize)，
+    // 否则长大雪(step=48)永远 >= gmax(=3) 被跳过、且 step<=1 永不被删 → 春雪永久残留。
+    // 每刻最多让 3 片雪缩小一级，避免同时消失的突兀感。
+    if (!this._snowGround || this._snowGround.length === 0) return;
+    const gmax = this.cellSize;
+    // 若场上还有非满格小雪，则优先化小雪、满格最后化；但若全已是满格（春天常见），
+    // 则照化满格，避免「全满格→全 continue→changed=false→直接 return」的死锁。
+    const hasSmall = this._snowGround.some(s => {
+      const st = s.pixelStep != null ? s.pixelStep : 1;
+      return st < gmax;
+    });
+    let changed = false;
+    let melting = 0;
+    for (const s of this._snowGround) {
+      if (melting >= 3) break;
+      const step = s.pixelStep != null ? s.pixelStep : 1;
+      if (step <= 1) { s.pixelStep = 0; changed = true; melting++; continue; }  // 最小 → 标记删除
+      if (hasSmall && step >= gmax) continue;                                    // 还有小雪：满格暂不动
+      s.pixelStep = step - 1;
+      changed = true;
+      melting++;
+    }
+    // 清理已化完的（pixelStep <= 0）
+    const before = this._snowGround.length;
+    this._snowGround = this._snowGround.filter(s => (s.pixelStep != null ? s.pixelStep : 1) > 0);
+    if (this._snowGround.length < before) changed = true;
+    if (changed) {
+      this._snowTotal = this._snowGround.length;
+      this._syncSnowCanvas();
+    }
+  },
+
+  _clearSnowAll() {
+    if (!this._snowGround) return;
+    const had = this._snowTotal > 0;
+    this._snowGround = [];
+    this._snowTotal = 0;
+    if (this._snowCtx) this._snowCtx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
+    if (had) { this._buildVegCache(); this._vegSnowTotal = 0; }
+  },
+
+  _ensureSnowCanvas() {
+    if (!this._snowCanvas) {
+      this._snowCanvas = document.createElement('canvas');
+      this._snowCtx = this._snowCanvas.getContext('2d');
+    }
+    if (this._snowCanvas.width !== this.canvas.width || this._snowCanvas.height !== this.canvas.height) {
+      this._snowCanvas.width = this.canvas.width;
+      this._snowCanvas.height = this.canvas.height;
+      this._snowCtx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
+      this._snowCtx.imageSmoothingEnabled = false;   // 关平滑：雪块边缘不抗锯齿，避免生长时亚像素抖动(颤抖)
+      this._snowCs = this.cellSize;
+      this._redrawSnowAll();                                        // 尺寸变化后按 cov 重绘全部积雪
+    }
+  },
+
+  _redrawSnowAll() {
+    if (!this._snowGround || this._snowGround.length === 0) return;
+    if (!this._snowCanvas) this._ensureSnowCanvas();
+    const ctx = this._snowCtx;
+    ctx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
+    // 地面积雪用 powder_snow 贴图（有雪粒纹理）
+    const sprGround = ASSETS.get('snow_ground');
+    // 离散尺寸跳变：pixelStep 即像素尺寸，1→2→3→…→gmax(整格48px)
+    const cs = this.cellSize;
+    const gmax = cs;
+    for (const f of this._snowGround) {
+      const ps = (f.pixelStep != null) ? f.pixelStep : 1;
+      if (ps < 1) continue;
+      const sz = Math.min(ps, cs);                              // 像素尺寸，1px起步→整格
+      // 落点 f.x/f.y 是格内任意16px对齐位置（不固定居中）；从落点平滑滑到铺满整格
+      const lx = f.x, ly = f.y;
+      const ox = Math.floor(lx / cs) * cs, oy = Math.floor(ly / cs) * cs;   // 所在格原点
+      const t = gmax > 1 ? (ps - 1) / (gmax - 1) : 1;             // 0→1
+      const x = Math.round(lx + t * (ox - lx));                   // 落点→格左上角
+      const y = Math.round(ly + t * (oy - ly));
+      if (sprGround && sprGround.width) {
+        ctx.drawImage(sprGround, x, y, sz, sz);
+      } else {
+        // 兜底：纯白方块
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fillRect(x, y, sz, sz);
+      }
+    }
+  },
+
+  _paintSnowCell(ctx, r, c, cs, spr, cov) {
+    const x = c * cs, y = r * cs;
+    ctx.clearRect(x, y, cs, cs);                                    // 先擦：改覆盖率重绘时不与旧像素叠加
+    const a = Math.min(1, cov);
+    if (spr && spr.width) {
+      ctx.globalAlpha = a;
+      ctx.drawImage(spr, x, y, cs, cs);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.fillStyle = 'rgba(244,248,255,' + (0.96 * a) + ')';       // 贴图未就绪兜底：雪白块
+      ctx.fillRect(x, y, cs, cs);
+    }
+  },
+
+  _tickSnow() {
+    this._snowTick++;
+    const season = (typeof Engine !== 'undefined') ? Engine.season : 0;
+    const hasSnow = !!this._snowGround && this._snowGround.length > 0;
+    if (season === 3) {                                            // 冬：地面积雪由 _accumulateSnow 后台累积（与空中飘雪无关）
+      this._ensureSnowState();
+      if (this.isRaining) this._accumulateSnow();                 // 下雪中：后台随机往游戏格加雪片（独立系统）
+      // 地面积雪离散跳变生长（每游戏刻最多2片）
+      this._growSnowStep();
+    } else if (season === 0) {                                     // 春：雪片逐渐融化消失
+      if (hasSnow) this._decaySnow();
+    } else {                                                        // 夏/秋：清空残留
+      if (hasSnow) this._clearSnowAll();
+    }
+    this._syncSnowCanvas();
+  },
+
+  /** 推进地面积雪像素级增长：每游戏刻最多让2片雪的pixelStep+1，达到整格后停止。
+   *  速度 *1/16：累积 16 游戏刻才真正推进一次（原每刻推2片 → 现每16刻推2片）。 */
+  _growSnowStep() {
+    if (!this._snowGround || this._snowGround.length === 0) return;
+    this._snowGrowAcc = (this._snowGrowAcc || 0) + 1;
+    if (this._snowGrowAcc < 16) return;   // 速度降为 1/16
+    this._snowGrowAcc = 0;
+    const cs = this.cellSize;
+    const gmax = cs;       // 满格对应的像素尺寸
+    let jumped = 0;
+    for (const s of this._snowGround) {
+      if (s.pixelStep == null) s.pixelStep = 1;
+      if (s.pixelStep < gmax) {
+        s.pixelStep++;
+        jumped++;
+        if (jumped >= 2) break;
+      }
+    }
+    if (jumped > 0) this._syncSnowCanvas();
+  },
+
+  _syncSnowCanvas() {
+    if (this._snowTotal > 0) {
+      this._ensureSnowCanvas();
+      this._redrawSnowAll();
+      if (this._snowTotal !== this._vegSnowTotal) { this._buildVegCache(); this._vegSnowTotal = this._snowTotal; }  // 覆盖率变→刷新草基部截断
+      this._shakeSnowBaseCache = null;                         // 雪变化→有雪底缓存失效（懒重建）
+    } else if (this._snowCanvas && this._vegSnowTotal !== 0) {
+      this._snowCtx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
+      this._buildVegCache(); this._vegSnowTotal = 0;               // 雪清空→草基部解埋
+      this._shakeSnowBaseCache = null;
+    }
+  },
+
+  /** 构建含雪草格底缓存：每格先在雪层 canvas 上截图（当前积雪），再叠加草基层。
+   *  用于草颤时回贴底，保证雪不被无雪底覆盖。懒构建，_syncSnowCanvas 雪变时失效。 */
+  _buildShakeSnowBaseCache() {
+    if (!this._snowCanvas || this._snowTotal === 0) { this._shakeSnowBaseCache = null; return; }
+    if (!this._grassBaseCache) return;
+    const cs = this.cellSize;
+    const grassSrc = (this.scene === 'treeFarm') ? TreeFarm : Farm;
+    const cache = {};
+    // 逐格从 _snowCanvas 截出该格的积雪区域（含透明），再叠加草格底
+    for (const key in this._grassBaseCache) {
+      const entry = this._grassBaseCache[key];
+      if (!entry) { cache[key] = null; continue; }
+      const [r, c] = key.split(',').map(Number);
+      const x = c * cs, y = r * cs;
+      const sub = document.createElement('canvas');
+      sub.width = cs; sub.height = cs;
+      const sctx = sub.getContext('2d');
+      sctx.drawImage(entry.cv, 0, 0);                                 // 草块底（不透明）先画
+      sctx.drawImage(this._snowCanvas, x, y, cs, cs, 0, 0, cs, cs);  // 雪盖在草上（埋雪观感，草颤不丢雪）
+      cache[key] = { cv: sub, top: entry.top };
+    }
+    this._shakeSnowBaseCache = cache;
+  },
+
+  _blitSnowGround(ctx) {
+    if (!this._snowCanvas || this._snowTotal === 0) return;
+    this._ensureSnowCanvas();                                        // 尺寸变化则同步全量重绘
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this._snowCanvas, 0, 0);
   },
 
   /** 雨滴落地：在 (x,y) 生成一圈扩散涟漪（用「水」贴图渲染，去鲜明灰蓝）
@@ -555,6 +874,8 @@ const UI = {
    *  与 _drawRain 解耦——即使雨停，残留颤动仍会继续淡出（render 每帧调用、不限 isRaining）。 */
   _drawGrassShakes(ctx, dt) {
     if (!this._grassShakes || !this._grassShakes.length) return;
+    // 有积雪时懒构建含雪底缓存（雪变则失效，此处重建一次）
+    if (this._snowTotal > 0 && !this._shakeSnowBaseCache) this._buildShakeSnowBaseCache();
     const cs = this.cellSize;
     const keep = [];
     const grassSrc = (this.scene === 'treeFarm') ? TreeFarm : Farm;
@@ -571,7 +892,9 @@ const UI = {
       const isBare = !!(grassSrc.bare && grassSrc.bare[s.r] && grassSrc.bare[s.r][s.c]);
       // 贴回预渲染草格底（像素级等价，省去 gblock + 灰度 overlay 两次 drawImage 与一次 composite 切换），
       // 再实时画会摆动的草顶层；草颤结束 age 过期即不再重画，缓存静态草原样复原。
-      const entry = this._grassBaseCache && this._grassBaseCache[s.r + ',' + s.c];
+      // 有积雪时改用含雪底缓存（shakeSnowBaseCache），避免无雪底覆盖积雪层。
+      const baseCache = (this._snowTotal > 0 && this._shakeSnowBaseCache) ? this._shakeSnowBaseCache : this._grassBaseCache;
+      const entry = baseCache && baseCache[s.r + ',' + s.c];
       if (entry) {
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(entry.cv, x, y);            // 离屏底 = 实时同像素合成结果，1 次 drawImage 替代底土重画
@@ -898,6 +1221,29 @@ const UI = {
     }
   },
 
+  /** 昼夜明暗系数：根据游戏内时刻返回夜晚黑暗强度 [0,1]（白天 0，深夜 ~0.6）。
+   *  平滑过渡：破晓 6:00 微暗→7:00 全亮；白昼 7:00–18:00 全亮；黄昏 18:00–20:00 渐暗；夜晚 20:00–24:00 满夜。
+   *  纯视觉，不影响玩法（作物生长/体力由 Engine 时钟决定）。 */
+  _nightAlpha() {
+    const t = (typeof Engine !== 'undefined' && Engine) ? (Engine.hour + Engine.minute / 60) : 12;
+    if (t < 7)  return 0.4 * Math.max(0, (7 - t) / 1);   // 6:00 破晓微暗(0.4) → 7:00 全亮(0)
+    if (t < 18) return 0;                                 // 7:00–18:00 白昼
+    if (t < 20) return 0.6 * (t - 18) / 2;                // 18:00 0 → 20:00 满夜(0.6)，黄昏渐暗
+    return 0.6;                                           // 20:00–24:00 满夜
+  },
+
+  /** 顶部昼夜蒙层：在整幅画面（含雨/雪）之上叠加深蓝夜色，使夜晚明显区别于白天。
+   *  放在 render 栈最顶层（HUD 是 DOM，不受影响）；过渡帧也在 _renderTransition 末尾调用，保证切场也带夜色。 */
+  _drawNightOverlay(ctx) {
+    const a = this._nightAlpha();
+    if (a <= 0) return;
+    const W = this.canvas.width, H = this.canvas.height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(8,14,42,' + a + ')';   // 深蓝夜空
+    ctx.fillRect(-8, -8, W + 16, H + 16);          // 略大于画布，兼容屏幕震动位移
+  },
+
   /** 下雨时自动浇灌主农场所有已耕地（置 cell.watered=true，等价于手动浇水；不影响树场） */
   _rainWaterFields() {
     if (typeof Farm === 'undefined' || !Farm.grid) return;
@@ -977,8 +1323,25 @@ const UI = {
     this._grassShakes = [];                                     // 立即清空草颤，避免过渡期间雨滴继续往旧场坐标推入残留
     const toScene = (this.scene === 'treeFarm') ? 'farm' : 'treeFarm';
     const dir = (toScene === 'treeFarm') ? -1 : 1;             // 反转滑场方向：树场在右→-1 源屏右滑；农场在左→+1 源屏左滑
-    const src = this._farmCache || this._renderSceneToCanvas(this.scene);
+    // 过渡快照必须是【独立副本】(不再直接用实时 _farmCache)，否则往上面画雪会污染静态缓存；
+    // 两屏都合成当前地面积雪 + 当前植被层，避免切场滑动期间雪整段消失（雪是全局覆盖整屏）。
+    const src = this._renderSceneToCanvas(this.scene);
     const dst = this._renderSceneToCanvas(toScene);
+    if (this._snowCanvas && this._snowTotal > 0) {
+      src.getContext('2d').drawImage(this._snowCanvas, 0, 0);
+      dst.getContext('2d').drawImage(this._snowCanvas, 0, 0);
+    }
+    // 停驻雪花(landed)烘焙进两屏快照，随场景一起滑动：否则切场时停驻雪花既不滑也不随场景走(原地不动/整段消失)。
+    // 层级与正常渲染一致：地面积雪层(上) → 停驻雪花(下) → 植被层；纯绘制、不推进状态。
+    if (this._snowFlakes && this._snowFlakes.some(f => f.stopped && !f._eaten)) {
+      const sx = this._shakeX, sy = this._shakeY;
+      this._shakeX = 0; this._shakeY = 0;            // 快照用世界坐标(不带震动偏移)，避免错位
+      this._drawSnowLanded(src.getContext('2d'));
+      this._drawSnowLanded(dst.getContext('2d'));
+      this._shakeX = sx; this._shakeY = sy;
+    }
+    // 当前场景植被(草/花/树)烘焙到源屏，置于 landed 之上（与正常渲染 _vegCache 守卫一致：仅当有积雪时）
+    if (this._snowTotal > 0 && this._vegCache) src.getContext('2d').drawImage(this._vegCache, 0, 0);
     this._transition = { t: 0, dur: 0.36, src, dst, dir, toScene };
   },
 
@@ -1087,6 +1450,7 @@ const UI = {
     sctx.clearRect(0, 0, cv.width, cv.height);
     this._renderStaticScene(sctx);
     this._rebuildGrassBase();   // 草格底随静态层一起重建（同失效触发：跨天换季/尺寸/农场变化），保证缓存与静态层像素一致
+    this._buildVegCache();      // 草+花离屏缓存：与 _farmCache 同失效触发，render() 中于积雪层之后贴回（草花在雪之上）
   },
 
   /** 预渲染草格「底」到离屏画布（dirt + grass_block + 灰度 overlay；裸土用 bareSoil），
@@ -1116,6 +1480,59 @@ const UI = {
     }
     this._grassBaseCache = cache;
   },
+
+  /** 植被离屏缓存：仅画「草(底+静态顶层) + 花朵」，不画地面/作物/树。
+   *  与 _farmCache 同失效触发重建；render() 中在积雪层之后贴回 → 草花显示在雪之上（雪只盖地面/作物/树，草花从雪里探出）。
+   *  画法对齐 _renderStaticScene / _renderTreeFarmScene：草仅画在地面格(!cell)与树场非树格；花画在 flowers>0 的格。 */
+  _buildVegCache() {
+    if (!this._vegCache) this._vegCache = document.createElement('canvas');
+    const cv = this._vegCache;
+    if (cv.width !== this.canvas.width || cv.height !== this.canvas.height) {
+      cv.width = this.canvas.width; cv.height = this.canvas.height;
+    }
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const cs = this.cellSize;
+    const colors = this._seasonColorAt();
+    if (this.scene === 'treeFarm') {
+      // 第一遍：非树格只画草叶（透明底，雪从草叶间露出；裸土/无草不画→雪正常盖住）；树格留空，由第二遍画树
+      this._forEachFarmCell(cs, (r, c, x, y) => {
+        const hasTree = !!(TreeFarm.trees[r] && TreeFarm.trees[r][c]);
+        if (!hasTree) {
+          const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
+          const isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
+          if (!isBare && (gstate === 1 || gstate === 2)) this._drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, 0);
+        }
+      });
+      // 第二遍：树（从上往下画 r=0→ROWS-1）→ 树在雪之上，不被雪盖住
+      // 关键：树冠向上溢出约 1.5 格。上下相邻时，下面树(r+1)的树冠会溢入上面树(r)的格内，
+      // 盖住上面树的树干底部。先画上面树、后画下面树，让下面树溢出的树冠自然叠在上方树干之上，
+      // 解决「上面的树干叠到下面的树叶上」。
+      for (let r = 0; r < DATA.FARM.ROWS; r++) {
+        for (let c = 0; c < DATA.FARM.COLS; c++) {
+          const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
+          if (t) this._drawTreeEntity(ctx, c * cs, r * cs, cs, t);
+        }
+      }
+    } else {
+      this._forEachFarmCell(cs, (r, c, x, y) => {
+        const cell = Farm.grid[r][c];
+        if (!cell) {                                                // 地面格：只画草叶（透明底），让雪从草叶间露出；裸土/无草格不画→雪正常盖住
+          const gstate = (Farm.grass && Farm.grass[r]) ? (Farm.grass[r][c] || 0) : 0;
+          const isBare = !!(Farm.bare && Farm.bare[r] && Farm.bare[r][c]);
+          if (!isBare && (gstate === 1 || gstate === 2)) this._drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, 0);
+        } else if (cell.crop) {                                     // 作物格：作物画在雪之上（作物从雪里探出，不被雪盖住）
+          this._drawCropCell(ctx, x, y, cs, cell);
+        }
+        const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
+        if (flower > 0) {
+          const fkey = this._flowerDef(flower).key;
+          this._drawPaddedAsset(ctx, fkey, x, y, cs, 0) || this._fillCell(ctx, x, y, cs, '#a9b765');
+        }
+      });
+    }
+  },
+
 
   /** 把指定场景的静态层渲染到一张离屏画布（用于滑场过渡的目标屏） */
   _renderSceneToCanvas(scene) {
@@ -1154,6 +1571,7 @@ const UI = {
       this._grassShakes = [];                                // 切场时清空旧场草颤，避免残留到新场（坐标被套用到新场草地）
       this._fallingLeaves = [];                              // 切场时清空落叶，避免跨场景残留
       this.markFarmDirty();
+      this._vegCache = null;                              // 切场：失效旧 vegCache，防止跨场景残留
       const r = this._navRect();
       const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
       if (this._particles) {
@@ -1324,12 +1742,34 @@ const UI = {
   },
 
   /** 草格「顶层」：会逐帧绕格底中心摆动的 short_grass / short_dry_grass（仅 gstate 1/2 有）。逐帧实时画，不可缓存。 */
-  _drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, sway) {
+  _drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, sway, snowTruncate = true) {
     if (gstate !== 1 && gstate !== 2) return;
+    const C = DATA.FARM.COLS, i = r * C + c;
+    // 雪埋草：雪覆盖率与草基部截断率正相关（比值 1），最多截断 1/4（100% 覆盖）。截断的是草叶基部（被雪盖住那段）。
+    // 仅「雪上植被层(_vegCache) / 草颤层」需要此截断（让雪埋住草基）；静态层(_farmCache)是雪融化后露出的底，
+    // 绝不截断，否则雪化后草永久短一截（静态层只在换季/农场变化/尺寸时重建，不在雪融化时重建）。
+    const cellLeft = c * cs, cellTop = r * cs;
+    let snowCovered = false;
+    if (snowTruncate && this._snowGround) {
+      for (const f of this._snowGround) {
+        // 雪片落在同一游戏格（c/r 精确匹配）即认为该格积雪，截断草基部
+        if (f.c === c && f.r === r) {
+          snowCovered = true;
+          break;
+        }
+      }
+    }
+    const cov = snowCovered ? 1.0 : 0.0;  // 积雪则满覆盖截断，否则无截断
+    const trunc = cov * 0.25;
     const s = sway || 0;
+    ctx.save();
+    if (trunc > 0) {                                              // 只画草叶顶部 (1-trunc)，基部被雪埋住
+      ctx.beginPath();
+      ctx.rect(x, y, cs, cs * (1 - trunc));
+      ctx.clip();
+    }
     if (s) {
       const cx = x + cs / 2, cyBottom = y + cs;
-      ctx.save();
       ctx.translate(cx, cyBottom);
       ctx.rotate(s);
       ctx.translate(-cx, -cyBottom);
@@ -1344,7 +1784,7 @@ const UI = {
         this._drawImageCell(ctx, dg, x, y, cs); ctx.globalAlpha = 1;
       } else { this._fillCell(ctx, x, y, cs, this._dryGrassColor); }
     }
-    if (s) ctx.restore();
+    ctx.restore();
   },
 
   _drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors, swayAngle) {
@@ -1352,7 +1792,7 @@ const UI = {
     const sway = swayAngle || 0;
     if (isBare) { this._drawBareSoil(ctx, r, c, x, y, cs, colors); return; }
     const hasBlock = this._drawGrassBaseLayer(ctx, r, c, x, y, cs, colors);
-    if (hasBlock) this._drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, sway);
+    if (hasBlock) this._drawGrassTopLayer(ctx, r, c, x, y, cs, gstate, colors, sway, false);  // 静态层：雪化后露出的底，不截断
   },
 
   /** 画一格「裸土/松动土」：先铺土色底，再叠随格随机的裸土贴图（dirt/coarse_dirt/rooted_dirt），
@@ -1502,8 +1942,9 @@ const UI = {
         }
       }
     }
-    // 第四遍画树：让向上溢出的树冠盖在相邻格之上，形成茂密感（先画下面行的树，上面的树冠自然叠在前）
-    for (let r = DATA.FARM.ROWS - 1; r >= 0; r--) {
+    // 第四遍画树：从上往下画（r=0→ROWS-1）。树冠向上溢出约 1.5 格，下面树的树冠会溢入上面树格内，
+    // 先画上面树、后画下面树，使下面溢出的树冠正确盖住上面树的树干（避免「上树树干叠下树树叶」）。
+    for (let r = 0; r < DATA.FARM.ROWS; r++) {
       for (let c = 0; c < DATA.FARM.COLS; c++) {
         const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
         if (t) this._drawTreeEntity(ctx, c * cs, r * cs, cs, t);
@@ -1767,6 +2208,9 @@ const UI = {
       this.showStatus(`选择工具：${names[tool] || tool}`, 800);
     }
     this._updateHeldSlot();
+    // 背包开着时同步快捷栏选中高亮（工具栏按钮直接装备也联动高亮）
+    if (this._invSyncSelToTool) this._invSyncSelToTool();
+    if (this._inventoryOpen) this.renderInventory();
   },
 
   /** 刷新底部「手中物品」显示（MC 风：显示当前选中的工具/种子） */
@@ -2351,6 +2795,25 @@ const UI = {
     return src ? `<img class="${cls}" src="${src}" alt="${alt}">` : '';
   },
 
+  /** 把奖励结构渲染成中文摘要（无 emoji；money/物品均用文字） */
+  _rewardText(reward) {
+    if (!reward) return '';
+    const parts = [];
+    if (reward.money) parts.push(`金锭 ×${reward.money}`);
+    if (reward.items) {
+      const LABEL = {
+        'money': '金锭', 'wood': '原木', 'planks': '木板', 'saplings': '树苗',
+        'axe': '木斧头', 'seed:wheat': '小麦种子', 'seed:strawberry': '甜浆果种子',
+        'crop:wheat': '小麦', 'crop:strawberry': '甜浆果',
+      };
+      for (const it of reward.items) {
+        const lbl = LABEL[it.id] || it.id;
+        parts.push(`${lbl} ×${it.count}`);
+      }
+    }
+    return parts.join('，');
+  },
+
   /**
    * 绿草(short_grass)按「季节草色 +30 明度」染色的 dataURL；拿不到染色就回退 short_grass 原图。
    * showStatus 的 🌿 角标与地里被清除的绿草图标都走这一处，保证视觉一致、逻辑唯一。
@@ -2436,6 +2899,7 @@ const UI = {
 
   // ===== 任务书（Advancement / 进度树）=====
   _questOpen: false,
+  _questTipNode: null,     // 当前点开的提示节点（再点同一节点 / 点其它节点切换 / 关界面清除）
 
   openQuest() {
     if (this._questOpen) { this.closeQuest(); return; }
@@ -2447,9 +2911,10 @@ const UI = {
     }
     // 打开时强制重置：回到默认分类、丢弃上次平移/缩放，视图对准根节点。
     // 不保留上次浏览位置，也不保留上次选中的分类页签（进入界面即「归位到根节点」）。
-    UI._questTab = null;            // 回到默认分类（_renderQuest 按 tabs[0] 取）
-    UI._questPan = null;            // 丢弃上次平移与缩放，重新初始化
+    this._questTab = null;            // 回到默认分类（_renderQuest 按 tabs[0] 取）
+    this._questPan = null;            // 丢弃上次平移与缩放，重新初始化
     this._questCenterOnRoot = true; // 视图强制对准根节点
+    this._questTipNode = null;    // 关闭上次的提示节点状态
     this._renderQuest();
   },
 
@@ -2462,8 +2927,11 @@ const UI = {
     const tt = document.getElementById('quest-tab-tip');
     if (tt) tt.classList.remove('show');
     this._questOpen = false;
+    this._questTipNode = null;    // 关闭提示节点状态
     // 背包仍开着，不关（关闭任务书即回到背包）
   },
+
+  // 领取弹窗已移除：点击节点即领取（FTB 原生交互），弹窗只显示任务/奖励信息，无领取按钮。
 
   _renderQuest() {
     const tree = document.getElementById('quest-tree');
@@ -2481,15 +2949,15 @@ const UI = {
     }
 
     const SRC = (typeof DATA !== 'undefined' && DATA.QUESTS) ? DATA.QUESTS : [];
-    // 完成态由 Quest 模块按真实进度判定（root 为 always，开局即亮）；用副本避免污染 DATA
+    // 完成态由 Quest 模块按真实进度判定（root 现为 manual，需点击才完成）；用副本避免污染 DATA
     const ADV = SRC.map(n => ({
       ...n,
       done: (typeof Quest !== 'undefined') ? Quest.isDone(n.id) : (n.done || false),
     }));
     // 选项卡（分类页签）：每个 tab 只显示该分类的节点（无总览页）
     const tabs = (typeof DATA !== 'undefined' && DATA.QUEST_TABS) ? DATA.QUEST_TABS : [];
-    if (!UI._questTab || UI._questTab === 'overview') UI._questTab = (tabs[0] && tabs[0].id) || 'core';
-    const activeTab = UI._questTab;
+    if (!this._questTab || this._questTab === 'overview') this._questTab = (tabs[0] && tabs[0].id) || 'core';
+    const activeTab = this._questTab;
     const vis = ADV.filter(n => n.cat === activeTab);
     // 可见节点包围盒 + 质心：用于把当前页节点居中到面板视口（避免散在四角「一左一右一上一下」）
     if (vis.length) {
@@ -2506,7 +2974,7 @@ const UI = {
     vis.forEach(a => { byId[a.id] = a; });
 
     // 坐标空间固定为 760×717（与面板 176:166 一致）；框为正方形，图标居中，文字在框右侧（放不下则翻左）
-    const PW = 760, PH = 717, FS = 52, ICON = 34, GAP = 8, TXT_W = 120;
+    const PW = 760, PH = 717, FS = 52, ICON = 34, GAP = 8, TXT_W = 80;
 
     // 1) 连线层：纯代码绘制的 SVG 折线（不再用 tab 贴图），完成路径染绿
     const NS = 'http://www.w3.org/2000/svg';
@@ -2519,8 +2987,9 @@ const UI = {
     svg.setAttribute('preserveAspectRatio', 'none');
     let li = 0;
     vis.forEach(n => {
-      if (!n.parent || !byId[n.parent]) return;
+      if (!n.parent || !byId[n.parent] || n.tutorial) return;
       const p = byId[n.parent];
+      if (p.cat !== n.cat) return;   // 跨分类父节点（如教程挂到核心页根「初来乍到」）不画连线，避免孤儿线
       const path = document.createElementNS(NS, 'path');
       // 直连线：父节点中心 → 子节点中心，一条斜直线（用户要求「直直的，不要弯」）
       path.setAttribute('d', `M ${p.x} ${p.y} L ${n.x} ${n.y}`);
@@ -2577,26 +3046,58 @@ const UI = {
     const chip = (m) => `<span class="q-node${m.done ? ' ok' : ''}">${m.done ? ICO_OK : ICO_LOCK}${m.title}`
       + (m.cat !== activeTab ? `<i>·${tabLabel[m.cat] || m.cat}</i>` : '') + '</span>';
 
-    const showTip = (node, el) => {
+    const showTip = (node) => {
+      const tip = document.querySelector('#quest-overlay .quest-tip');
+      if (!tip) return;
+      const el = document.querySelector('#quest-tree .quest-frame[data-qid="' + node.id + '"]');
+      if (!el) return;
       const r = el.getBoundingClientRect();
       const tr = node.track || {};
-      let req;
-      if (tr.k === 'always') {
-        req = node.done ? (ICO_OK + ' 起始任务（已完成）') : '起始任务';
+      // —— 目标（按完成类型组织文案；进度/成就自动完成，教程手动）——
+      let goal;
+      if (node.manual) {
+        if (node.track && node.track.k === 'submit') {
+          // 提交型：需持有并交出物品，点击节点领取（消耗物品）
+          const tn = node.track.n || 1;
+          const have = (typeof Quest !== 'undefined') ? Quest._itemCount(node.track.item) : 0;
+          const iname = (typeof Quest !== 'undefined') ? Quest._itemName(node.track.item) : (node.track.item || '');
+          if ((typeof Quest !== 'undefined') && Quest.isDone(node.id)) goal = ICO_OK + ' 已完成 · 奖励已领取';
+          else {
+            const pend = preOf(node).filter(p => !p.done);
+            const lock = pend.length ? ICO_LOCK + ' ' : '';
+            goal = lock + `提交要求：交 ${tn}×${iname}<br>已持有：<b>${have} / ${tn}</b>`;
+          }
+        } else {
+          // 普通手动解锁成就（教程）：点击节点领取，不自动完成
+          if ((typeof Quest !== 'undefined') && Quest.isDone(node.id)) goal = ICO_OK + ' 已完成 · 奖励已领取';
+          else {
+            const pend = preOf(node).filter(p => !p.done);
+            const lock = pend.length ? ICO_LOCK + ' ' : '';
+            goal = lock + (node.desc ? node.desc : '点击节点领取奖励');
+          }
+        }
+      } else if (tr.k === 'always') {
+        goal = node.done ? (ICO_OK + ' 起始任务（已完成）') : '起始任务';
       } else if (tr.k === 'ownTool') {
         const has = !!(typeof Player !== 'undefined' && Player.ownedTools && Player.ownedTools[tr.tool]);
-        req = (has ? ICO_OK + ' 已拥有 — ' : ICO_LOCK + ' 需先拥有 — ') + (node.desc || ('工具：' + tr.tool));
+        goal = (has ? ICO_OK + ' 已拥有 — ' : ICO_LOCK + ' 需先拥有 — ') + (node.desc || ('工具：' + tr.tool));
       } else {
-        // 累计型：实时进度 = min(已累计, 目标)，让悬停明确显示「详细完成要求 + 当前进度」
+        // 累计型（进度/成就）：实时进度 = min(已累计, 目标)
         const cur = (typeof Quest !== 'undefined') ? Math.min(Quest.stats[tr.k] || 0, tr.n) : 0;
-        req = `完成要求：${node.desc || ''}<br>进度：<b>${cur} / ${tr.n}</b>${node.done ? ' ' + ICO_OK + ' 已完成' : ''}`;
+        goal = `完成要求：${node.desc || ''}<br>进度：<b>${cur} / ${tr.n}</b>${node.done ? ' ' + ICO_OK + ' 已完成' : ''}`;
       }
-      // 有向图关系：入度=前置（谁解锁了我），出度=可解锁（我解锁了谁）
+      // —— 奖励（无则显示「无」）——
+      const rewardText = this._rewardText(node.reward);
+      const rewardSec = rewardText ? rewardText : '无';
+      // —— 前置 / 后置（无则显示「无」）——
       const pre = preOf(node), nxt = nextOf(node);
-      let graph = '';
-      if (pre.length) graph += `<div class="quest-gr"><b>前置</b>${pre.map(chip).join('')}</div>`;
-      if (nxt.length) graph += `<div class="quest-gr"><b>可解锁</b>${nxt.map(chip).join('')}</div>`;
-      tip.innerHTML = `<div class="quest-ttl">${node.title}</div><div class="quest-ds">${req}</div>${graph}`;
+      const preSec = pre.length ? pre.map(chip).join('') : '无';
+      const nextSec = nxt.length ? nxt.map(chip).join('') : '无';
+      tip.innerHTML =
+        `<div class="quest-gr"><b>目标</b>${goal}</div>`
+        + `<div class="quest-gr"><b>奖励</b>${rewardSec}</div>`
+        + `<div class="quest-gr"><b>前置</b>${preSec}</div>`
+        + `<div class="quest-gr"><b>后置</b>${nextSec}</div>`;
       tip.classList.add('show');
       const tw = tip.offsetWidth, th = tip.offsetHeight;
       let left = r.right + 10, top = r.top + r.height / 2 - th / 2;
@@ -2606,7 +3107,8 @@ const UI = {
       if (top + th > window.innerHeight - 8) top = window.innerHeight - 8 - th;
       tip.style.left = left + 'px'; tip.style.top = top + 'px';
     };
-    const hideTip = () => tip.classList.remove('show');
+    // 提示由悬停节点展开（mouseenter → showTip）；移开节点收起（mouseleave → hideTip）；点击节点额外触发领取奖励
+    const hideTip = () => { tip.classList.remove('show'); this._questTipNode = null; };
 
     // 2) 任务节点：正方形框(obtained/unobtained 区分完成) + 居中图标 + 文字
     vis.forEach((n, i) => {
@@ -2642,9 +3144,19 @@ const UI = {
       txt.innerHTML = `<div class="quest-ttl">${n.title}</div>`;
       tree.appendChild(txt);
 
-      frame.style.cursor = 'help';
-      frame.addEventListener('mouseenter', () => showTip(n, frame));
-      frame.addEventListener('mouseleave', hideTip);
+      frame.dataset.qid = n.id;
+      frame.style.cursor = 'pointer';
+      // 悬停节点 = 弹窗出现（任务/前置/奖励预览）；点击节点 = 领取奖励（FTB 原生：悬停看、点击领，无领取按钮）
+      frame.addEventListener('mouseenter', () => showTip(n));   // 悬停即弹
+      frame.addEventListener('mouseleave', () => hideTip());     // 移开即收
+      frame.addEventListener('pointerdown', (e) => e.stopPropagation()); // 防止面板拖拽 setPointerCapture 吞掉 click
+      frame.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if ((typeof Quest !== 'undefined') && n.manual && !Quest.isDone(n.id) && Quest._manualClaimable(n)) {
+          Quest.claim(n.id);   // 点击节点即领取奖励
+        }
+        showTip(n);            // 刷新弹窗（已领则显示「已完成 · 奖励已领取」）
+      });
       // 进场 stagger：节点三件套(框/图标/文字)一起按序号 --i 错峰入场；动画结束移除 .qenter，交还 hover transform 控制
       [frame, ic, txt].forEach(el => {
         el.classList.add('qenter');
@@ -2672,8 +3184,8 @@ const UI = {
     }
 
     // 拖拽平移：面板为视口，内部树放大(scale)后超出窗口，按住拖动浏览（仿 Minecraft 进度树）
-    if (!UI._questPan) UI._questPan = { tx: 0, ty: 0, scale: 1.2 };
-    const P = UI._questPan;
+    if (!this._questPan) this._questPan = { tx: 0, ty: 0, scale: 1.2 };
+    const P = this._questPan;
     if (panel) {
       // 背景可视区：demo_background 以 contain 贴在面板上（宽图按宽适配、居中），
       // 面板上下会留出暗边带。节点/连线须留在「背景可视区」内，不能拖进上下暗边带（否则显得「超出背景」）。
@@ -2722,13 +3234,13 @@ const UI = {
       tree.style.bottom = 'auto';
       tree.style.width = panel.clientWidth + 'px';
       tree.style.height = panel.clientHeight + 'px';
-      // 自适应缩放：采用「覆盖(cover)」而非「包含(contain)」——让内容至少铺满背景的一个维度、
-      // 并在另一维度超出，从而留出拖拽平移的余地（我的世界风格：树比屏幕大，拖拽漫游）。
-      // 下限 1.25（保证节点够大、不被压成小点）、上限 2.0（防节点大得离谱）；当前四分类均落在区间内。
+      // 自适应缩放：用户要求「缩小到约一半节点可见、其余拖拽浏览」（参考我的世界进度树）。
+      // 节点间距已减半(DX 150→75)，cw 同步减半；此处再乘 0.5 并下调上限到 1.25，
+      // 使整棵进度树缩到约可见一半、节点仍清晰，剩余靠拖拽漫游。下限 0.5 防缩成小点。
       if (this._questBBox) {
         const cw = (this._questBBox.maxX - this._questBBox.minX) || 1;
         const ch = (this._questBBox.maxY - this._questBBox.minY) || 1;
-        P.scale = Math.min(2.0, Math.max(1.25, _band.w / cw, _band.h / ch));
+        P.scale = Math.min(1.25, Math.max(0.5, _band.w / cw * 0.5, _band.h / ch * 0.5));
       }
       const clampPan = () => {
         const vw = panel.clientWidth, vh = panel.clientHeight;
@@ -2870,8 +3382,8 @@ const UI = {
           btn.classList.add('shake');
           return;
         }
-        if (UI._questTab === t.id) return;
-        UI._questTab = t.id;
+        if (this._questTab === t.id) return;
+        this._questTab = t.id;
         this._questCenterOnRoot = true; // 切换分类后把视图对准该组节点（根不在该页则退回包围盒中心）
         this._renderQuest();
       });
