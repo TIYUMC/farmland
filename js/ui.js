@@ -2775,7 +2775,10 @@ const UI = {
     }
     const el = document.getElementById('status-message');
     el.innerHTML = msg;
-    el.className = 'status-visible';
+    // 重播弹跳动画
+    el.classList.remove('status-visible');
+    void el.offsetWidth;
+    el.classList.add('status-visible');
     if (this.statusTimeout) clearTimeout(this.statusTimeout);
     this.statusTimeout = setTimeout(() => {
       el.className = 'status-hidden';
@@ -3153,37 +3156,17 @@ const UI = {
       frame.addEventListener('pointerdown', (e) => e.stopPropagation()); // 防止面板拖拽 setPointerCapture 吞掉 click
       frame.addEventListener('click', (e) => {
         e.stopPropagation();
-        console.log('[UI] click quest:', n.id, 'manual:', n.manual, 'isDone:', Quest ? Quest.isDone(n.id) : 'N/A');
-        console.log('[UI] typeof Quest:', typeof Quest, 'typeof Player:', typeof Player);
         if ((typeof Quest !== 'undefined') && n.manual && !Quest.isDone(n.id) && Quest._manualClaimable(n)) {
-          const before = Player ? Player.money : 0;
-          console.log('[UI] calling Quest.claim with:', n.id, 'before money:', before);
-          console.log('[UI] typeof UI:', typeof UI, 'UI.openInventory:', typeof (UI || {}).openInventory);
           const result = Quest.claim(n.id);
-          const after = Player ? Player.money : 0;
-          console.log('[UI] claim result:', result, 'after money:', after);
           if (result) {
             this._updateHUD(); // 刷新金币显示
-            console.log('[UI] claiming quest, opening inventory...');
-            console.log('[UI] typeof globalThis:', typeof globalThis, 'globalThis.UI:', typeof globalThis?.UI);
             // 无条件打开背包，确保用户看到奖励
             if (typeof UI !== 'undefined' && UI.openInventory) {
               UI.openInventory();
-              console.log('[UI] openInventory called successfully');
-              console.log('[UI] after openInventory, invSlots count:', Player.invSlots ? Player.invSlots.filter(s => s !== null).length : 'null');
-              console.log('[UI] after openInventory, seeds:', JSON.stringify(Player.seeds));
               // 强制刷新背包 DOM
               if (UI.renderInventory) UI.renderInventory();
-              const mainEl = document.getElementById('inv-grid-main');
-              const hotEl = document.getElementById('inv-grid-hotbar');
-              console.log('[UI] DOM main slots:', mainEl ? mainEl.children.length : 'null');
-              console.log('[UI] DOM hotbar slots:', hotEl ? hotEl.children.length : 'null');
-            } else {
-              console.warn('[UI] openInventory not available:', typeof UI, typeof (UI || {}).openInventory);
             }
           }
-        } else {
-          console.warn('[UI] skip claim:', { hasQuest: typeof Quest !== 'undefined', manual: n.manual, isDone: Quest ? Quest.isDone(n.id) : 'N/A' });
         }
         showTip(n);            // 刷新弹窗（已领则显示「已完成 · 奖励已领取」）
         this._renderQuest();  // 完整重绘节点：边框+图标同步更新为 done 态

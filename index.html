@@ -8,6 +8,19 @@
 </head>
 <body>
   <div id="game-container">
+    <!-- 标题屏幕 -->
+    <div id="title-screen" class="overlay-visible">
+      <div id="title-bg"></div>
+      <div id="title-content">
+        <h1 id="title-logo">Framland</h1>
+        <div id="title-buttons">
+          <div id="btn-new-game" class="mc-btn">单人游戏</div>
+          <div id="btn-continue" class="mc-btn" style="display:none">继续游戏</div>
+        </div>
+        <div id="title-version">v0.1 · Phase 1</div>
+      </div>
+    </div>
+
     <!-- HUD 顶栏 -->
     <div id="hud-bar">
       <div class="hud-item"><span class="hud-label" id="hud-ico-time">⏰</span><span id="hud-datetime">春1日 第1年 06:00</span></div>
@@ -51,6 +64,15 @@
       <div class="tool-btn" id="btn-debug">
         <div class="tool-icon">⚡</div>
         <div class="tool-name">调试</div>
+      </div>
+      <div class="tool-separator"></div>
+      <div class="tool-btn" id="btn-save">
+        <div class="tool-icon">💾</div>
+        <div class="tool-name">存档</div>
+      </div>
+      <div class="tool-btn" id="btn-load">
+        <div class="tool-icon">📂</div>
+        <div class="tool-name">读档</div>
       </div>
     </div>
 
