@@ -266,7 +266,7 @@ body {
   text-align: center;
 }
 .status-hidden { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-.status-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.status-visible { opacity: 1; transform: translateX(-50%) translateY(0); animation: statusPop 0.35s cubic-bezier(0.34,1.56,0.64,1); }
 
 /* 提示框里的锄头贴图（替换原 emoji 🔨） */
 #status-message .status-hoe {
@@ -491,11 +491,7 @@ body {
 }
 #day-summary.panel-hidden { display: none; }
 #day-summary.panel-visible {
-  animation: slideInRight 0.4s cubic-bezier(0.16,1,0.3,1);
-}
-@keyframes slideInRight {
-  from { opacity: 0; transform: translate(40px, -50%); }
-  to   { opacity: 1; transform: translate(0, -50%); }
+  animation: summarySlideUp 0.55s cubic-bezier(0.34,1.56,0.64,1);
 }
 #summary-panel {
   background: rgba(22, 33, 62, 0.94);
@@ -876,3 +872,225 @@ body {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* ===== 标题界面（MC 风格） ===== */
+#title-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-size: cover;
+  background-position: center;
+  cursor: default;
+}
+#title-screen.overlay-hidden { display: none; }
+#title-screen.overlay-visible  { display: flex; }
+
+#title-bg {
+  position: absolute; inset: 0;
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+}
+#title-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+#title-logo {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 64px;
+  font-weight: bold;
+  color: #ffe680;
+  text-shadow: 
+    0 0 10px #ff9900,
+    0 0 20px #ff6600,
+    0 0 40px #ff3300,
+    3px 3px 0 #8b4513,
+    -1px -1px 0 #ffe680;
+  letter-spacing: 6px;
+  margin-bottom: 40px;
+  animation: titleGlow 2s ease-in-out infinite;
+}
+@keyframes titleGlow {
+  0%, 100% { 
+    text-shadow: 0 0 10px #ff9900, 0 0 20px #ff6600, 0 0 40px #ff3300, 3px 3px 0 #8b4513, -1px -1px 0 #ffe680;
+  }
+  50% { 
+    text-shadow: 0 0 15px #ffaa00, 0 0 30px #ff7700, 0 0 50px #ff4400, 3px 3px 0 #8b4513, -1px -1px 0 #ffe680;
+  }
+}
+#title-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+.mc-btn {
+  width: 280px;
+  padding: 10px 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: #fff;
+  background: #7e7e7e;
+  border: 3px solid #000;
+  border-top-color: #c4c4c4;
+  border-left-color: #c4c4c4;
+  border-bottom-color: #3a3a3a;
+  border-right-color: #3a3a3a;
+  cursor: pointer;
+  text-shadow: 2px 2px 0 #3f3f3f;
+  letter-spacing: 1px;
+}
+.mc-btn:hover { background: #9e9e9e; }
+.mc-btn:active {
+  border-top-color: #3a3a3a;
+  border-left-color: #3a3a3a;
+  border-bottom-color: #c4c4c4;
+  border-right-color: #c4c4c4;
+}
+#title-version {
+  margin-top: 28px;
+  font-size: 12px;
+  color: #aaa;
+  font-family: monospace;
+}
+
+/* ===== 全局动画增强 ===== */
+
+/* 字母逐个出现（标题） */
+@keyframes letterIn {
+  from { opacity: 0; transform: translateY(-30px) rotate(-8deg) scale(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+.title-letter {
+  display: inline-block;
+  animation: letterIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.title-letter.space { width: 0.3em; }
+
+/* 按钮弹性入场 */
+@keyframes btnBounceIn {
+  0%   { opacity: 0; transform: scale(0.3) translateY(40px); }
+  50%  { transform: scale(1.08) translateY(-6px); }
+  70%  { transform: scale(0.95) translateY(2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.mc-btn.btn-in { animation: btnBounceIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* 提示文字闪烁（MC 风格 splash） */
+@keyframes splashFlash {
+  0%, 100% { color: #fffacd; transform: scale(1) rotate(-15deg); }
+  50%       { color: #ffff66; transform: scale(1.12) rotate(-15deg); }
+}
+#title-splash {
+  position: absolute;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: #fffacd;
+  text-shadow: 1px 1px 0 #3f3f3f;
+  transform-origin: left center;
+  animation: splashFlash 1.8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 状态提示弹跳 */
+@keyframes statusPop {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.8); }
+  60%  { transform: translateX(-50%) translateY(4px) scale(1.04); }
+  80%  { transform: translateX(-50%) translateY(-2px) scale(0.98); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+.status-visible { animation: statusPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* 结算面板从底部弹性滑入 */
+@keyframes summarySlideUp {
+  0%   { opacity: 0; transform: translateY(80px) scale(0.9); }
+  60%  { transform: translateY(-10px) scale(1.02); }
+  80%  { transform: translateY(4px) scale(0.98); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* 工具按钮选中脉冲 */
+@keyframes toolPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(226,183,20,0.5); }
+  50%       { box-shadow: 0 0 12px 4px rgba(226,183,20,0.25); }
+}
+.tool-btn.active {
+  animation: toolPulse 1.6s ease-in-out infinite;
+}
+
+/* 手持槽脉冲（选择物品时） */
+@keyframes heldPulse {
+  0%, 100% { border-color: rgba(226,183,20,0.4); }
+  50%       { border-color: rgba(226,183,20,0.9); box-shadow: 0 0 10px rgba(226,183,20,0.3); }
+}
+.held-slot { animation: heldPulse 2s ease-in-out infinite; }
+
+/* 背景微动效（视差缩放） */
+@keyframes bgBreath {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.03); }
+}
+#title-bg {
+  animation: bgBreath 8s ease-in-out infinite;
+}
+
+/* 浮尘粒子 */
+@keyframes floatUp {
+  0%   { opacity: 0; transform: translateY(0) translateX(0); }
+  10%  { opacity: 0.8; }
+  90%  { opacity: 0.3; }
+  100% { opacity: 0; transform: translateY(-120px) translateX(30px); }
+}
+.particle {
+  position: absolute;
+  width: 4px; height: 4px;
+  background: radial-gradient(circle, rgba(255,255,200,0.9), transparent);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: floatUp 4s ease-out forwards;
+}
+
+/* 存档/读档闪光 */
+@keyframes saveFlash {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; background: rgba(255,220,50,0.4); }
+  100% { opacity: 0; }
+}
+.save-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  animation: saveFlash 0.6s ease-out forwards;
+}
+
+/* 季节切换淡入淡出 */
+@keyframes seasonFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+#game-canvas.season-fade {
+  animation: seasonFade 0.4s ease-out;
+}
+
+/* 成就 Toast 弹出 */
+@keyframes toastBounce {
+  0%   { opacity: 0; transform: translateX(120%); }
+  50%  { transform: translateX(-8px); }
+  70%  { transform: translateX(4px); }
+  85%  { transform: translateX(-2px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.toast-visible { animation: toastBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* 任务书节点连线绘制 */
+@keyframes questLinkDraw {
+  from { stroke-dashoffset: 200; }
+  to   { stroke-dashoffset: 0; }
+}
+
