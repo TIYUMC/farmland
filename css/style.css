@@ -182,6 +182,22 @@ body {
 .tool-emoji { font-size: 20px; line-height: 1; }
 .inv-emoji { font-size: 22px; line-height: 1; }
 
+/* ===== 调试·跳季下拉（HUD 内，竖排在调试按钮正下方）===== */
+.debug-cluster {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+#season-jump {
+  background: #1c1c22;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 92px;
+}
+#season-jump:focus { outline: none; border-color: var(--accent); }
+
 /* 手持物品槽：显示玩家当前「手里拿着」的工具/种子；空手时仅留一个空格子、不高亮 */
 /* 固定宽高，避免空手时内容塌陷导致边框收成椭圆/胶囊形 */
 #held-slot {
@@ -391,12 +407,15 @@ body {
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   transition: background-color .15s ease;
-  animation: slotIn .42s cubic-bezier(0.16,1,0.3,1) both;
-  animation-delay: calc(var(--i, 0) * 28ms);
 }
 @keyframes slotIn {
   from { opacity: 0; transform: translateY(8px) scale(.85); }
   to   { opacity: 1; transform: none; }
+}
+/* 入场动画只在开背包时播放（容器加 .inv-grid-anim）；交互重渲染不再重放，避免“一直闪” */
+.inv-grid-anim .inv-slot {
+  animation: slotIn .42s cubic-bezier(0.16,1,0.3,1) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
 }
 .inv-slot::after {
   content: "";
@@ -432,6 +451,33 @@ body {
 .inv-slot.disabled { opacity: 0.45; cursor: not-allowed; }
 .inv-slot.buy:hover { background: rgba(120,200,120,0.18); }
 .inv-slot.sell:hover { background: rgba(230,180,80,0.18); }
+
+/* 快捷栏选中高亮（滚轮切换 / 工具栏按钮装备联动） */
+.inv-slot.inv-sel {
+  background: rgba(255, 220, 120, 0.22);
+  box-shadow: inset 0 0 0 2px rgba(255, 210, 90, 0.9);
+}
+
+/* 光标跟随的持物 ghost（拿起物品后跟在鼠标上） */
+#inv-held {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  display: none;
+  align-items: center; justify-content: center;
+  width: 48px; height: 48px;
+  pointer-events: none;
+  z-index: 9999;
+}
+#inv-held img {
+  width: 80%; height: 80%;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.6));
+}
+#inv-held .inv-count {
+  position: absolute; right: 1px; bottom: -2px;
+  font-size: 13px; font-weight: bold; color: #fff;
+  text-shadow: 1px 1px 0 #000, -1px 0 0 #000, 0 -1px 0 #000;
+}
 
 /* 日结算：右侧浮动、不阻塞、点击穿透 */
 #day-summary {
@@ -510,8 +556,63 @@ body {
 }
 #inv-topbar .tool-btn { min-width: 52px; padding: 3px 8px; }
 #inv-topbar .tool-icon-img { width: 24px; height: 24px; }
-/* 工具栏里的商店/睡觉/调试已移入背包，故在工具栏隐藏（DOM 保留，避免 main.js 绑定失效） */
+/* 商店/睡觉已移入背包；调试按钮移到 HUD 上栏（#btn-inv-debug）。底部工具栏三按钮 DOM 保留并隐藏，避免 main.js 绑定失效 */
 #btn-shop, #btn-sleep, #btn-debug { display: none; }
+#hud-bar .debug-cluster { margin-left: auto; }
+
+/* MC 2×2 合成格 + 输出格：按 inventory.png 纹理像素比例绝对定位，贴到纹理格子上
+   纹理实测 1760×1660（标准 176×166 的 10×）；2×2 输入槽区 (x:940..1399, y:150..559)，
+   输出槽 (x:1420..1529, y:440..559)。量图见 measure_inv.py */
+#inv-craft { display: contents; } /* 让 grid/out 直接成为 #inventory-panel 的绝对定位子级 */
+#inv-craft-grid {
+  position: absolute;
+  left: calc(56.2% - 6px); top: 10.5%;   /* 合成格整体左移 6px（5+1）；每格与主背包格同尺寸 */
+  width: 20.5%; height: 21.7%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 1px; /* 极小间隙，让纹理自身的格子间灰线透出 */
+  z-index: 3;
+}
+#inv-craft-out {
+  position: absolute;
+  left: calc(76.7% + 79px); top: 15.925%;  /* 输出格随合成格一起左移 6px（5+1）→ +79px（相对间距不变） */
+  width: 10.25%; height: 10.85%;
+  z-index: 3;
+}
+/* 合成/输出格子：透明底（让 inventory.png 纹理格子显出）+ 同 .inv-slot 的像素内框 */
+.craft-cell {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  image-rendering: pixelated;
+  background: transparent;
+  border: none;
+  transition: background-color .15s ease;
+}
+.craft-cell::after {
+  content: "";
+  position: absolute; inset: 2px;
+  border: 1px solid rgba(0,0,0,0.45);
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.18), inset -1px -1px 0 rgba(0,0,0,0.35);
+  pointer-events: none;
+}
+.craft-cell img {
+  width: 78%; height: 78%;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  pointer-events: none;
+}
+.craft-cell .inv-count {
+  position: absolute;
+  right: 3px; bottom: 1px;
+  font-size: clamp(10px, 1.4vw, 14px);
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000, -1px 0 0 #000, 0 -1px 0 #000;
+  pointer-events: none;
+}
+.craft-cell:hover { background: rgba(255,255,255,0.08); }
 
 /* 任务书面板（Advancement / 进度树）：z-index 高于背包 overlay，关闭后回到背包 */
 #quest-overlay {
@@ -561,7 +662,21 @@ body {
    短名仍常驻在选项卡上，不进弹窗；弹窗只承载详情：节点=标题+描述+前置/可解锁，选项卡=解锁条件/进度。 */
 .quest-tip, .quest-tab-tip { position: fixed; z-index: 200; pointer-events: none; max-width: 240px; background-color: rgba(20,18,28,.95); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); background-size: 100% 100%; background-position: center; background-repeat: no-repeat; padding: 8px 11px; color: #fff; font-size: 13px; line-height: 1.5; text-shadow: 1px 1px 2px #000; opacity: 0; visibility: hidden; transform: translateY(6px); transition: opacity .2s cubic-bezier(0.16,1,0.3,1), transform .2s cubic-bezier(0.16,1,0.3,1), visibility .2s; }
 .quest-tip.show, .quest-tab-tip.show { opacity: 1; visibility: visible; transform: translateY(0); }
+/* 领取弹窗需可点按钮：开启 claimable 时让 tip 接收指针事件（默认 none，避免遮挡悬停） */
+.quest-tip.claimable { pointer-events: auto; }
 .quest-tip .quest-ttl { font-size: 13px; }
+/* 手动成就「领取奖励」按钮：MC 风木质按钮，无 emoji（弹窗背景已用 enchantment 素材） */
+.quest-claim-btn {
+  margin-top: 9px; padding: 6px 16px;
+  font: bold 14px/1.2 "Microsoft YaHei", "PingFang SC", sans-serif;
+  color: #fff; text-shadow: 1px 1px 2px #000;
+  background: linear-gradient(#7a5a30, #4a3618);
+  border: 2px solid #241808; border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 2px 4px rgba(0,0,0,.5);
+  cursor: pointer; pointer-events: auto;
+}
+.quest-claim-btn:hover { filter: brightness(1.14); }
+.quest-claim-btn:active { transform: translateY(1px); filter: brightness(.96); }
 .quest-tip .quest-ds { margin-top: 3px; }
 /* 有向图关系行：前置(入度) / 可解锁(出度)，与描述之间用细分隔线断开 */
 .quest-gr {
@@ -615,6 +730,8 @@ body {
 #quest-tabs {
   position: relative;
   display: flex; gap: 2px; z-index: 30; pointer-events: none;
+  align-self: flex-start;  /* 页签条整体贴住面板（背景图）左边缘，而非居中 */
+  margin-left: 6px;        /* 用户微调：整条页签相对面板左边缘净右移 6px（右 10 → 左 3 → 左 1） */
   align-items: flex-end;   /* 底边对齐：所有页签底边齐平压在面板顶边上，选中态多出的高度一律「向上」长 */
   margin-bottom: -111px;   /* 负边距：页签底边压住面板顶边 111px（用户精调，要求再往下 1px），只改这一处 */
   top: 0;                  /* 页签条整体纵向微调（正=下移）。未选中页签保持原位，故为 0；
@@ -678,17 +795,84 @@ body {
   .quest-tab.shake { animation: none; }
 }
 
-/* 全局：尊重系统「减少动效」偏好，关闭所有过渡/动画（含本轮新增的背包/提示/忙碌/工具栏/商店） */
+/* 全局：尊重系统「减少动效」偏好，关闭所有过渡/动画（含本轮新增的背包/提示/忙碌/工具栏/商店/成就） */
 @media (prefers-reduced-motion: reduce) {
   #inventory-overlay,
   #inventory-panel,
   .inv-slot,
   #status-message,
   #busy-indicator,
-  #day-summary {
+  #day-summary,
+  #achievement-toast {
     animation: none !important;
     transition: opacity .01ms !important;
   }
   .tool-btn:active,
   .shop-item.is-draggable:hover { transform: none !important; }
+}
+
+/* ===== 成就弹窗（MC 风） ===== */
+#achievement-toast {
+  position: fixed;
+  top: 52px;
+  right: 16px;
+  z-index: 200;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(12px);
+  transition: opacity .35s cubic-bezier(.4,0,.2,1), transform .35s cubic-bezier(.4,0,.2,1);
+}
+#achievement-toast.toast-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+#achievement-toast.toast-hidden {
+  opacity: 0;
+  transform: translateX(12px);
+}
+.achievement-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  min-width: 240px;
+  background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAICAYAAADA+m62AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAVklEQVR4nGP4////PwAFgwLP3KxjNwAAAABJRU5ErkJggg==') no-repeat center / contain;
+  /* 背景由 JS 动态插入 img.bg 提供 */
+}
+.achievement-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 0;
+}
+.achievement-icon {
+  width: 36px;
+  height: 36px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.achievement-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+  z-index: 1;
+}
+.achievement-label {
+  font-size: 10px;
+  color: #a0a0a0;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.achievement-title {
+  font-size: 15px;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
 }

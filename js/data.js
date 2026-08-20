@@ -40,7 +40,7 @@ const DATA = {
   // === 种子数据 ===
   CROPS: {
     wheat: {
-      name: '小麦', seedCost: 1, sellPrice: 35, color: '#BFD07A',
+      name: '小麦', seedCost: 1, sellPrice: 5, color: '#BFD07A',
       growDays: 4, regrow: false,
       sprite: '🌱', harvestSprite: '🌾',
       assetStages: ['wheat_stage0', 'wheat_stage2', 'wheat_stage4', 'wheat_stage6', 'wheat_stage7'],
@@ -48,14 +48,14 @@ const DATA = {
       shopSellIcon: '小麦', // shop 卖行同样用篮子图，与背包一致
     },
     potato: {
-      name: '土豆', seedCost: 5, sellPrice: 80, color: '#9DBB6A',
+      name: '土豆', seedCost: 5, sellPrice: 25, color: '#9DBB6A',
       growDays: 6, regrow: false,
       sprite: '🌿', harvestSprite: '🥔',
       assetStages: ['potatoes_stage0', 'potatoes_stage1', 'potatoes_stage2', 'potatoes_stage3', 'potato'],
       assetHarvest: 'potato',
     },
     strawberry: {
-      name: '甜浆果', seedCost: 20, sellPrice: 30, color: '#8FCA7A',
+      name: '甜浆果', seedCost: 20, sellPrice: 100, color: '#8FCA7A',
       growDays: 8, regrow: true, regrowDays: 3,
       sprite: '🌱', harvestSprite: '🍓',
       assetStages: ['sweet_berry_bush_stage0', 'sweet_berry_bush_stage1', 'sweet_berry_bush_stage2', 'sweet_berry_bush_stage3'],
@@ -66,7 +66,7 @@ const DATA = {
 
   // === 玩家初始状态 ===
   PLAYER_START: {
-    money: 128, // 开局给两组金锭（2×64）
+    money: 0,   // 开局不给金币（仅锄头+水桶；点「初来乍到」奖励 5 金）
     stamina: 20,
     maxStamina: 20,
   },
@@ -109,9 +109,9 @@ const DATA = {
     { id: 'potato',      name: '土豆',   cost: 5,  desc: '6天成熟 · 高收益' },
     { id: 'strawberry',  name: '甜浆果', cost: 20, desc: '8天成熟 · 可重复收获' },
     // 工具类：cost = 金锭花费；costItems = 附加材料（村民交易第二个输入槽）
-    { id: 'axe',         name: '木斧头', cost: 30, type: 'tool',
+    { id: 'axe',         name: '木斧头', cost: 20, type: 'tool',
       costItems: [{ id: 'wheat', count: 5 }],
-      desc: '砍树必备 · 30金锭 + 5小麦' },
+      desc: '砍树必备 · 20金锭 + 5小麦' },
   ],
 
   // === 花朵物种注册表（数组下标+1 = Farm.flowers[r][c] 的花种编号；0=无花）===
@@ -141,7 +141,7 @@ const DATA = {
   //   'always'            开局即完成（根节点）
   //   累计事件名          配合 n=阈值：till/plant/harvest/chop/plantSapling/wood/earn
   //   'ownTool'+tool      实时读 Player.ownedTools[tool]
-  // 坐标 x/y 为节点圆心(px)。布局：每个分类一条水平直线（节点间距 DX=150，y 统一 320，无分叉），
+  // 坐标 x/y 为节点圆心(px)。布局：每个分类一条水平直线（节点间距 DX=75，y 统一 320，无分叉），
   // 由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现（参考我的世界进度树）。详见下方「设计原则」。
   // cat: 分类键，对应 QUEST_TABS 的 id。core=主线；farm=种植支线；forage=采集支线；tools=工具支线（均单线）。
   // 设计原则（2026-08-09 重构）：
@@ -150,37 +150,53 @@ const DATA = {
   //   2) 难度单调递增：同一指标阈值只增不减，不同指标按「生产流水线」顺序递进（开垦→播种→收获→售卖），
   //      绝不出现「一会儿简单一会儿难」的回退。
   //   3) 每个节点都有意义：参考 FTB 进度，删去同指标递增刷数节点(开垦10/30、砍树10/25、收获200等)与 challenge 奖励节点，仅留清晰里程碑（首达成/阶段跃迁）。
-  //   4) 布局：每分类一条水平直线，节点间距 DX=150，y 统一 320（由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现）。
+  //   4) 布局：每分类一条水平直线，节点间距 DX=75，y 统一 320（由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现）。
   QUESTS: [
-    // —— 核心玩法（主线：空手抵达 → 开垦 → 安家 → 收获 → 置办农具 → 林间初探 → 致富；参考 FTB 进度，仅留区分度里程碑 + 每支线的「网关」前置 ——
-    { id:'root',    parent:null,    x:80,   y:320, icon:'quest_root_hoe', title:'初来乍到', desc:'欢迎来到 Farmland',            cat:'core', track:{k:'always'} },
-    { id:'a1',      parent:'root',  x:230,  y:320, icon:'dirt',          title:'开垦者',   desc:'开垦 1 块耕地',               cat:'core', track:{k:'till',  n:1} },
-    // —— 网关：完成即解锁「种植」支线 ——
-    { id:'g_farm',  parent:'a1',    x:380,  y:320, icon:'wheat_seeds',   title:'安家落户', desc:'播下第一粒种子，安顿下来 —— 种植支线已开启', cat:'core', track:{k:'plant', n:1} },
-    { id:'m3',      parent:'g_farm',x:530,  y:320, icon:'wheat_seeds',          title:'夏收',     desc:'累计收获 100 份作物',          cat:'core', track:{k:'harvest', n:100} },
-    // —— 网关：完成即解锁「工具」支线 ——
-    { id:'g_tools', parent:'m3',    x:680,  y:320, icon:'wooden_axe',    title:'置办农具', desc:'购得第一件工具(木斧) —— 工具支线已开启',     cat:'core', track:{k:'ownTool', tool:'axe'} },
-    // —— 网关：完成即解锁「采集」支线 ——
-    { id:'g_forage',parent:'g_tools',x:830, y:320, icon:'oak_log',       title:'林间初探', desc:'踏入林地砍倒第一棵树 —— 采集支线已开启', cat:'core', track:{k:'chop', n:1} },
-    { id:'m4',      parent:'g_forage',x:980,y:320, icon:'money',        title:'丰衣足食', desc:'累计赚取 300 金',              cat:'core', track:{k:'earn',  n:300} },
-    // —— 种植支线（种 → 收 → 卖）——
-    { id:'a1a',  parent:'root', x:80,   y:320, icon:'wheat_seeds', title:'播种者',   desc:'种下 1 颗种子',          cat:'farm', track:{k:'plant', n:1} },
-    { id:'a1b',  parent:'a1a', x:230,  y:320, icon:'wheat_seeds',        title:'丰收季',   desc:'累计收获 50 份作物',     cat:'farm', track:{k:'harvest', n:50} },
-    { id:'a1c',  parent:'a1b', x:380,  y:320, icon:'money',       title:'小富即安', desc:'累计赚取 200 金',        cat:'farm', track:{k:'earn',  n:200} },
-    // —— 采集支线（砍倒第一棵树，由主线「林间初探」解锁）——
-    { id:'b1',   parent:'root', x:80,   y:320, icon:'oak_log',     title:'樵夫', desc:'砍倒 1 棵树',      cat:'forage', track:{k:'chop',  n:1} },
-    // —— 工具支线（拥有第一件工具，由主线「置办农具」解锁）——
-    { id:'c1',   parent:'root', x:80,   y:320, icon:'wooden_axe',  title:'工匠入门', desc:'购得第一件工具(木斧头)', cat:'tools',  track:{k:'ownTool', tool:'axe'} },
+    // —— 入门指南（Getting Started 弧线：空手抵达 → 开垦 → 播种 → 收获 → 置办工具 → 砍树 → 致富；三条支线各由主线网关解锁，参考 FTB Academy/University 任务书结构）——
+    { id:'root',    parent:null,    x:80,   y:320, icon:'quest_root_hoe', title:'初来乍到', desc:'欢迎来到 Farmland，点击领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{money:5} },
+    { id:'a1',      parent:'root',  x:155,  y:320, icon:'dirt',          title:'开垦田地', desc:'用锄头开垦 1 块耕地，翻松土壤播下希望。', cat:'core', track:{k:'till',  n:1} },
+    // —— 网关：播下第一粒种子 → 解锁「耕作」支线 ——
+    { id:'g_farm',  parent:'a1',    x:230,  y:320, icon:'wheat_seeds',   title:'播下种子', desc:'在耕地播下 1 颗种子，安顿下来 —— 耕作支线已开启', cat:'core', track:{k:'plant', n:1} },
+    { id:'m3',      parent:'g_farm',x:305,  y:320, icon:'小麦',          title:'初次丰收', desc:'累计收获 10 份作物，体验春华秋实。',          cat:'core', track:{k:'harvest', n:10} },
+    // —— 网关：购得木斧 → 解锁「工匠」支线 ——
+    { id:'g_tools', parent:'m3',    x:380,  y:320, icon:'wooden_axe',   title:'置办农具', desc:'在商店购得木斧头 —— 工匠支线已开启',     cat:'core', track:{k:'ownTool', tool:'axe'} },
+    // —— 网关：砍倒第一棵树 → 解锁「采集」支线 ——
+    { id:'g_forage',parent:'g_tools',x:455, y:320, icon:'oak_log',       title:'林间初探', desc:'踏入林地砍倒第一棵树 —— 采集支线已开启', cat:'core', track:{k:'chop', n:1} },
+    { id:'m4',      parent:'g_forage',x:530,y:320, icon:'money',        title:'小有积蓄', desc:'累计赚取 100 金锭，农场初具规模。',              cat:'core', track:{k:'earn',  n:100} },
+    // —— 耕作支线（种植 → 收获，由主线「播下种子」解锁）——
+        { id:'fa1',  parent:'g_farm',  x:80,  y:200, icon:'wheat_seeds', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
+        { id:'fa2',  parent:'fa1',     x:155, y:200, icon:'小麦',        title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 30 金锭酬金。',       cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:30 } },
+    // —— 采集支线（砍树 → 补种 → 积材，由主线「林间初探」解锁）——
+        { id:'fo1',  parent:'g_forage', x:80,  y:200, icon:'oak_sapling', title:'林间驿站', desc:'为林间驿站供应 20 份原木修缮木屋，换取 5 株补种树苗。', cat:'forage', manual:true, track:{k:'submit', item:'wood', n:20}, reward:{ items:[{id:'saplings', count:5}] } },
+        { id:'fo2',  parent:'fo1',     x:155, y:200, icon:'oak_log',     title:'猎人补给', desc:'向深山猎人补给 40 份原木，换取 30 金锭犒赏。',           cat:'forage', manual:true, track:{k:'submit', item:'wood', n:40}, reward:{ money:30 } },
+    // —— 工匠支线（购斧 → 伐木，由主线「置办农具」解锁）——
+        { id:'to1',  parent:'g_tools',  x:80,  y:200, icon:'oak_log',     title:'木工坊供货', desc:'向木工坊交付 16 块木板，换回 10 份原木继续加工。',     cat:'tools', manual:true, track:{k:'submit', item:'planks', n:16}, reward:{ items:[{id:'wood', count:10}] } },
+        { id:'to2',  parent:'to1',     x:155, y:200, icon:'oak_log',     title:'建筑委托', desc:'承接镇上建筑委托，交付 32 块木板换取 40 金锭。',         cat:'tools', manual:true, track:{k:'submit', item:'planks', n:32}, reward:{ money:40 } },
+    // —— 手动教程（FTB manual 任务：悬停看目标/奖励/前后置，点击节点领取；提交物品换奖励，不自动完成）——
+    // reward 结构：{ money?, items:[{id, count}] }；id 支持 money/wood/planks/saplings/axe/seed:<cropId>/crop:<cropId>。
+    { id:'tut1', parent:'root',   x:80,  y:440, icon:'dirt',        title:'整备行囊', desc:'教程：点击领取启程物资 —— 5 颗小麦种子，正式踏上农场之旅。', cat:'core', manual:true, tutorial:true, track:{k:'manual'}, reward:{ items:[{id:'seed:wheat', count:5}] } },
+    { id:'tut2', parent:'root',   x:80,   y:440, icon:'wheat_seeds', title:'春种秋收', desc:'教程：用小麦种子播种，麦穗成熟后收获；将 5 份小麦交回，换取木料。', cat:'farm', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:5}, reward:{ items:[{id:'wood', count:3}] } },
+    { id:'tut3', parent:'root',   x:80,   y:440, icon:'oak_log',     title:'巧手合成', desc:'教程：把 1 个橡木原木放入背包 2×2 合成格制得 4 木板，交回换取木料。', cat:'tools', manual:true, tutorial:true, track:{k:'submit', item:'planks', n:4}, reward:{ items:[{id:'wood', count:4}] } },
+    { id:'tut4', parent:'root',   x:80,   y:440, icon:'wooden_axe', title:'林间拾薪', desc:'教程：持斧前往树场砍伐，集齐 4 份木头交回，换取树苗以便补种。', cat:'forage', manual:true, tutorial:true, track:{k:'submit', item:'wood', n:4}, reward:{ items:[{id:'saplings', count:3}] } },
+    { id:'tut5', parent:'tut1', x:155, y:440, icon:'money',       title:'集市贸易', desc:'教程：将收获的小麦带到商店售出，用 20 份小麦换取 20 金锭，打通经济循环。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ money:20 } },
   ],
   // 选项卡（分类页签）。id 与 QUESTS[].cat 对应；
   // tab/selected 为选项卡底图贴图 key；icon 为该分类在选项卡上的代表物贴图 key。
   // 渲染时按数组次序拼成 Above_Left / Above_Middle×(N-2) / Above_Right 的小方格条。
   QUEST_TABS: [
-    { id:'core',   label:'核心玩法', icon:'quest_root_hoe', tab:'advancement_tab_above_left',  selected:'advancement_tab_above_left_selected' },
-    // 支线选项卡：prereq 指向主线(核心)的「网关」任务 id，未完成前选项卡显示锁且不可点开；
+    { id:'core',   label:'入门指南', icon:'quest_root_hoe', tab:'advancement_tab_above_left',  selected:'advancement_tab_above_left_selected' },
+    // 支线选项卡：prereq 指向主线(入门)的「网关」任务 id，未完成前选项卡显示锁且不可点开；
     // 每个支线在主线各有一个专属网关(g_farm/g_forage/g_tools)，完成即解锁对应支线，其 desc 写明解锁提示。
-    { id:'farm',   label:'种植',     icon:'wheat_seeds', tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_farm' },
+    { id:'farm',   label:'耕作',     icon:'wheat_seeds', tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_farm' },
     { id:'forage', label:'采集',     icon:'oak_log',     tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_forage' },
-    { id:'tools',  label:'工具',     icon:'wooden_axe',  tab:'advancement_tab_above_right',  selected:'advancement_tab_above_right_selected', prereq:'g_tools' },
+    { id:'tools',  label:'工匠',     icon:'wooden_axe',  tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_tools' },
+  ],
+
+  // === 合成配方（MC 2×2 合成格，数据驱动；shapeless：只看格内物品数量，不看位置）===
+  // 每条：in={物品id:所需数量}，out={item:产出id, count:产出数量}。
+  // 产出 = out.count * floor(格内该物品总数 / in.数量)（如 1 原木→4 木板；N 原木→4N）。
+  // 物品 id 与 Player 字段映射见 inventory.js 的 _craftResField。
+  CRAFT_2X2: [
+    { in: { oak_log: 1 }, out: { item: 'oak_planks', count: 4 } },
   ],
 };

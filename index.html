@@ -16,7 +16,16 @@
         <div id="stamina-bar-bg"><div id="stamina-bar-fill"></div></div>
         <span id="hud-stamina">20/20</span>
       </div>
-      <div class="hud-item"><span class="hud-label" id="hud-ico-money">💰</span><span id="hud-money">128</span></div>
+      <div class="debug-cluster">
+        <div class="tool-btn" id="btn-inv-debug"><div class="tool-icon"></div><div class="tool-name">调试</div></div>
+        <select id="season-jump">
+          <option value="">跳季…</option>
+          <option value="0">春（第1天）</option>
+          <option value="1">夏（第1天）</option>
+          <option value="2">秋（第1天）</option>
+          <option value="3">冬（第1天）</option>
+        </select>
+      </div>
     </div>
 
     <!-- 游戏画布 -->
@@ -47,6 +56,7 @@
 
     <!-- 状态提示 -->
     <div id="status-message" class="status-hidden"></div>
+    <div id="achievement-toast" class="toast-hidden"></div>
     <div id="busy-indicator" class="busy-hidden">
       <img id="busy-icon" class="busy-icon" alt="" src="">
       <span id="busy-text">正在…中</span>
@@ -59,12 +69,17 @@
         <div id="inv-topbar">
           <div class="tool-btn" id="btn-inv-shop"><div class="tool-icon"></div><div class="tool-name">商店</div></div>
           <div class="tool-btn" id="btn-inv-sleep"><div class="tool-icon"></div><div class="tool-name">睡觉</div></div>
-          <div class="tool-btn" id="btn-inv-debug"><div class="tool-icon"></div><div class="tool-name">调试</div></div>
           <div class="tool-btn" id="btn-inv-book"><div class="tool-icon"></div><div class="tool-name">任务</div></div>
         </div>
-        <div id="inv-money">
-          <img id="inv-money-icon" alt="金币" src="">
-          <span id="inv-money-val">0</span>
+        <!-- MC 2×2 合成格：放原木 → 出木板 -->
+        <div id="inv-craft">
+          <div id="inv-craft-grid">
+            <div class="craft-cell" data-cell="0"></div>
+            <div class="craft-cell" data-cell="1"></div>
+            <div class="craft-cell" data-cell="2"></div>
+            <div class="craft-cell" data-cell="3"></div>
+          </div>
+          <div id="inv-craft-out" class="craft-cell"></div>
         </div>
         <!-- 主物品栏 9×3 -->
         <div id="inv-grid-main" class="inv-grid" role="grid" aria-label="物品栏"></div>
@@ -95,13 +110,13 @@
 
   <script src="js/assets.js"></script>
   <script src="js/data.js"></script>
-  <script src="js/quest.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/farm.js"></script>
   <script src="js/player.js"></script>
-    <script src="js/economy.js"></script>
-    <script src="js/juice.js"></script>
-    <script src="js/ui.js"></script>
+  <script src="js/economy.js"></script>
+  <script src="js/juice.js"></script>
+  <script src="js/quest.js"></script>
+  <script src="js/ui.js"></script>
   <script src="js/inventory.js"></script>
   <script src="js/shop.js"></script>
   <script src="js/treefarm.js"></script>

@@ -83,7 +83,7 @@ UI._buildTrades = function() {
   for (const item of DATA.SHOP_ITEMS) {
     // 工具类（如木斧头）：单独一种交易类型 kind:'tool'，输入=金锭，输出=工具贴图
     if (item.type === 'tool') {
-      // 附加材料（如木斧头 = 30 金锭 + 5 小麦）放进村民 GUI 的第二个输入槽
+      // 附加材料（如木斧头 = 20 金锭 + 5 小麦）放进村民 GUI 的第二个输入槽
       const extra = (item.costItems && item.costItems[0]) || null;
       const exDef = extra ? DATA.CROPS[extra.id] : null;
       trades.push({
@@ -162,8 +162,7 @@ UI._executeTrade = function(t) {
     this._refreshTradesAfterDeal();
     return;
   }
-  // 工具（如木斧头 = 30 金锭 + 5 小麦）：点结果槽直接按配方扣除，无需拖入原材料
-  // （金锭在背包按 64 堆叠，多材料配方也没法靠单个输入框拖拽表达，故统一「点结果槽即买」）
+  // 工具（如木斧头 = 20 金锭 + 5 小麦）：必须先把金锭 + 小麦拖入输入框（_toolReady 齐全）才能点结果槽成交
   if (isTool) {
     if (this._guard(!this._toolReady(t), '请先把材料拖入输入框')) return;
     const chk = Economy.canBuyTool(t.cropId);
@@ -325,7 +324,7 @@ UI._drawShopOverlay = function() {
     };
     wrap.appendChild(img);
     // 数量角标：买→花费；卖→拥有数量 / 总价（无单位）
-    if (count != null && count !== '') {
+    if (count != null && count !== '' && count !== 1) {
       const badge = document.createElement('span');
       badge.className = 'shop-count';
       const num = (typeof count === 'number' && count > 9999) ? Math.round(count / 1000) + 'k' : count;
@@ -447,7 +446,8 @@ UI._drawShopOverlay = function() {
       const m = this._toolParts || {};
       if (m['money']) createItem(t.input.key, 144, 45, 14, m['money']);
       if (t.input2 && m[t.input2.key]) createItem(t.input2.key, 170, 45, 14, m[t.input2.key]);
-      createItem(t.output.key, 227, 45, 16, 1); // 每次成交得 1 把工具
+      // 斧头等成品仅在材料(金锭+小麦)齐全(_toolReady)时才显示，避免「没放原材料就显示成品」的错觉
+      if (this._toolReady(t)) createItem(t.output.key, 227, 45, 16, 1);
     } else {
       const def = DATA.CROPS[t.cropId];
       if (dropped) {

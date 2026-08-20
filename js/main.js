@@ -23,6 +23,11 @@
       UI.render();
     };
 
+    // 积雪等按「游戏刻」推进（与渲染帧率无关）：每游戏分钟 1 刻
+    Engine.onTick = () => {
+      if (typeof UI !== 'undefined' && UI._tickSnow) UI._tickSnow();
+    };
+
     // 每分钟刷新 HUD 时钟，并缓慢恢复体力
     Engine.onMinuteChange = (hour, minute) => {
       Player.regenStamina(DATA.STAMINA_REGEN_PER_MIN);
@@ -119,6 +124,15 @@
       if (on && typeof UI.closeSummary === 'function') UI.closeSummary();
       UI.showStatus(on ? '⚡ 调试快进：0.5 秒 = 1 天' : '调试快进已关闭', 1200);
     });
+    // 调试·跳季下拉（底部）：直接跳到指定季节的第 1 天
+    const seasonJump = document.getElementById('season-jump');
+    if (seasonJump) {
+      seasonJump.addEventListener('change', () => {
+        const v = parseInt(seasonJump.value, 10);
+        if (isNaN(v) || v < 0 || v > 3) return;
+        _jumpToSeason(v);
+      });
+    }
     // 任务书入口：背包内紫色书按钮（调试右边），点开/关任务书；关闭后回到背包
     const invBook = document.getElementById('btn-inv-book');
     if (invBook) invBook.addEventListener('click', () => UI.openQuest());
@@ -129,7 +143,7 @@
     if (btn) { btn.click(); return; }
     // 工具栏已不显示锄头/水桶/斧头：快捷键 1/2/3 直接装备（保持可玩）
     if (toolId === 'hoe' || toolId === 'water' || toolId === 'axe') {
-      // 木斧头需先购买（30 金锭 + 5 小麦），未拥有则拦截提示
+      // 木斧头需先购买（20 金锭 + 5 小麦），未拥有则拦截提示
       if (toolId === 'axe' && (!Player.ownedTools || !Player.ownedTools.axe)) {
         UI.showStatus('先去商店 (B) 买把木斧头再砍树', 1500);
         return;
@@ -139,6 +153,20 @@
       const names = { hoe: '锄头', water: '水桶', axe: '斧头' };
       UI.showStatus(`选择工具：${names[toolId]}`, 800);
     }
+  }
+
+  /** 调试：直接跳到指定季节的第 1 天（不模拟逐日流逝，仅重置季节/日期并刷新画面与积雪状态）。 */
+  function _jumpToSeason(season) {
+    Engine.season = season;
+    Engine.day = 1;
+    Engine._resetClock();
+    if (typeof UI !== 'undefined') {
+      UI.markFarmDirty();                                  // 重建静态层 + veg 缓存（按新季节着色）
+      if (typeof UI._tickSnow === 'function') UI._tickSnow();   // 立即按新季节调和积雪（春化/冬清/夏秋清空）
+      if (typeof UI._updateHUD === 'function') UI._updateHUD();
+    }
+    const names = ['春', '夏', '秋', '冬'];
+    if (typeof UI !== 'undefined' && UI.showStatus) UI.showStatus(`⚡ 跳到 ${names[season]}季 · 第1天`, 1200);
   }
 
   function _addInventoryButton() {
@@ -181,7 +209,6 @@
     // HUD 图标换贴图
     _setHudIcon('hud-ico-stamina',  'food_full');
     _setHudIcon('hud-ico-time',  'time');
-    _setHudIcon('hud-ico-money', 'money');
   }
 
   /** 把图标换成贴图：注册表里没有该贴图就不动（保留原 emoji 兜底），成功返回 true。

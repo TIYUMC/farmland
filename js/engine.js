@@ -27,6 +27,7 @@ const Engine = {
   // === 外部 hooks ===
   onHourChange: null,     // callback(hour, minute)
   onMinuteChange: null,   // callback(hour, minute) — 每分钟刷新 HUD 时钟
+  onTick: null,           // callback() — 每游戏刻（每分钟）触发一次，用于与渲染帧率无关的推进（积雪等）
   onNewDay: null,         // callback(day, season, year)
   onDayEnd: null,         // callback() → 返回 { 是否保存并继续 }
 
@@ -66,6 +67,7 @@ const Engine = {
     const tick = () => {
       if (!this.running || this.paused) return;
       this.minute += 1; // 每 tick 走 1 分钟（配合 msPerTick，1 游戏小时 ≈ 12 秒，一天≈3.6 分钟）
+      if (this.onTick) this.onTick();                              // 游戏刻钩子（积雪等按刻推进，与帧率无关）
       if (this.onMinuteChange) this.onMinuteChange(this.hour, this.minute);
       if (this.minute >= 60) {
         this.minute = 0;

@@ -83,6 +83,9 @@ const Quest = {
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showStatus) {
       globalThis.UI.showStatus('🌟 任务达成：' + q.title, 1600);
     }
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showAchievement) {
+      globalThis.UI.showAchievement(q.title, 'nether_star', 3500);
+    }
   },
 
   // ─────────────────────────────────────────────
@@ -104,27 +107,45 @@ const Quest = {
 
   /** 领取一个手动成就：校验前置 → 标记完成 → 发奖 → 重渲染 → 提示 */
   claim(id) {
+    console.log('[Quest] claim:', id);
+    console.log('[Quest] typeof Player:', typeof Player, 'Player.money:', Player ? Player.money : 'N/A');
     const q = (typeof DATA !== 'undefined' && DATA.QUESTS) ? DATA.QUESTS.find(x => x.id === id) : null;
-    if (!q || !q.manual) return false;
-    if (this.isDone(id)) return false;          // 已领取
-    if (!this._manualClaimable(q)) return false; // 前置未满足 / 物品不足
+    if (!q) { console.warn('[Quest] claim failed: quest not found'); return false; }
+    console.log('[Quest] quest found:', JSON.stringify(q));
+    if (!q.manual) { console.warn('[Quest] claim failed: not manual'); return false; }
+    if (this.isDone(id)) { console.warn('[Quest] claim failed: already done'); return false; }
+    if (!this._manualClaimable(q)) { console.warn('[Quest] claim failed: not claimable'); return false; }
     // 提交型：先扣交出的物品（不足则拒，理论上 _manualClaimable 已拦）
     if (q.track && q.track.k === 'submit') {
       if (!this._takeItems(q.track.item, q.track.n)) return false;
     }
     if (typeof Player !== 'undefined') Player.questsDone[id] = true;
+    console.log('[Quest] granting reward:', JSON.stringify(q.reward));
+    console.log('[Quest] typeof UI:', typeof globalThis.UI, 'UI.openInventory:', typeof (globalThis.UI || {}).openInventory);
     this._grantReward(q.reward);
+    console.log('[Quest] reward granted. Player.money:', typeof Player !== 'undefined' ? Player.money : 'N/A');
     // 提交消耗了物品：背包若开着则实时刷新
-    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) {
+      globalThis.UI.renderInventory();
+      console.log('[Quest] rendered inventory (was open)');
+    } else {
+      console.log('[Quest] inventory not open, skipping render');
+    }
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI._questOpen && globalThis.UI._renderQuest) globalThis.UI._renderQuest();
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showStatus) globalThis.UI.showStatus('成就达成：' + q.title, 1600);
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showAchievement) globalThis.UI.showAchievement(q.title, 'nether_star', 3500);
     return true;
   },
 
   /** 发放奖励（money 直接加钱；items 逐条映射 Player 聚合） */
   _grantReward(reward) {
+    console.log('[Quest] _grantReward called with:', JSON.stringify(reward), 'typeof Player:', typeof Player);
     if (!reward || typeof Player === 'undefined') return;
-    if (reward.money) Player.addMoney(reward.money);
+    if (reward.money) {
+      console.log('[Quest] adding money:', reward.money, 'before:', Player.money);
+      Player.addMoney(reward.money);
+      console.log('[Quest] after addMoney:', Player.money);
+    }
     if (reward.items) for (const it of reward.items) this._grantItem(it);
   },
 
@@ -140,7 +161,26 @@ const Quest = {
       Player.ownedTools.axe = true;
       if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
     }
-    else if (id.indexOf('seed:') === 0) Player.addSeeds(id.slice(5), n);
+    else if (id.indexOf('seed:') === 0) {
+      const seedId = id.slice(5);
+      console.log('[Quest] granting seed:', seedId, 'count:', n);
+      Player.addSeeds(seedId, n);
+      console.log('[Quest] after addSeeds, seeds:', JSON.stringify(Player.seeds));
+      console.log('[Quest] typeof UI:', typeof globalThis.UI, 'UI._seedIconKey:', typeof (globalThis.UI || {})._seedIconKey);
+      // 直接重建背包缓存，确保种子立即显示
+      Player._rebuildInvSlots();
+      console.log('[Quest] rebuilt invSlots, count:', Player.invSlots ? Player.invSlots.filter(s => s !== null).length : 'null');
+      console.log('[Quest] first invSlot after rebuild:', Player.invSlots ? JSON.stringify(Player.invSlots[0]) : 'null');
+      // 无条件刷新背包显示（不管开没开）
+      if (typeof globalThis.UI !== 'undefined' && globalThis.UI.renderInventory) {
+        console.log('[Quest] calling renderInventory...');
+        globalThis.UI.renderInventory();
+        console.log('[Quest] renderInventory done, invSlots length:', Player.invSlots ? Player.invSlots.length : 'null');
+        console.log('[Quest] invSlots[27] (hotbar slot 0):', JSON.stringify(Player.invSlots ? Player.invSlots[27] : 'null'));
+      } else {
+        console.warn('[Quest] skip renderInventory: UI', typeof globalThis.UI, 'renderInventory', typeof (globalThis.UI || {}).renderInventory);
+      }
+    }
     else if (id.indexOf('crop:') === 0) Player.addToInventory(id.slice(5), n);
   },
 

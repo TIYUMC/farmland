@@ -34,6 +34,7 @@ const UI = {
   offsetX: 0, offsetY: 0,
 
   statusTimeout: null,
+  _achievementTimeout: null,  // 成就弹窗定时器
   summaryCallback: null,
 
   _busy: false,        // 正在执行动作中（期间锁输入，不能干别的事）
@@ -2176,7 +2177,6 @@ const UI = {
     const money = Player.money;
     const bg = pct < 30 ? '#e0524f' : '';   // B5：体力 <30% 变红
     if (sta !== c.sta) { document.getElementById('hud-stamina').textContent = sta; c.sta = sta; }
-    if (money !== c.money) { document.getElementById('hud-money').textContent = money; c.money = money; }
     if (pct !== c.pct || bg !== c.bg) {
       const fill = document.getElementById('stamina-bar-fill');
       fill.style.width = `${pct}%`;
@@ -3153,8 +3153,37 @@ const UI = {
       frame.addEventListener('pointerdown', (e) => e.stopPropagation()); // 防止面板拖拽 setPointerCapture 吞掉 click
       frame.addEventListener('click', (e) => {
         e.stopPropagation();
+        console.log('[UI] click quest:', n.id, 'manual:', n.manual, 'isDone:', Quest ? Quest.isDone(n.id) : 'N/A');
+        console.log('[UI] typeof Quest:', typeof Quest, 'typeof Player:', typeof Player);
         if ((typeof Quest !== 'undefined') && n.manual && !Quest.isDone(n.id) && Quest._manualClaimable(n)) {
-          Quest.claim(n.id);   // 点击节点即领取奖励
+          const before = Player ? Player.money : 0;
+          console.log('[UI] calling Quest.claim with:', n.id, 'before money:', before);
+          console.log('[UI] typeof UI:', typeof UI, 'UI.openInventory:', typeof (UI || {}).openInventory);
+          const result = Quest.claim(n.id);
+          const after = Player ? Player.money : 0;
+          console.log('[UI] claim result:', result, 'after money:', after);
+          if (result) {
+            this._updateHUD(); // 刷新金币显示
+            console.log('[UI] claiming quest, opening inventory...');
+            console.log('[UI] typeof globalThis:', typeof globalThis, 'globalThis.UI:', typeof globalThis?.UI);
+            // 无条件打开背包，确保用户看到奖励
+            if (typeof UI !== 'undefined' && UI.openInventory) {
+              UI.openInventory();
+              console.log('[UI] openInventory called successfully');
+              console.log('[UI] after openInventory, invSlots count:', Player.invSlots ? Player.invSlots.filter(s => s !== null).length : 'null');
+              console.log('[UI] after openInventory, seeds:', JSON.stringify(Player.seeds));
+              // 强制刷新背包 DOM
+              if (UI.renderInventory) UI.renderInventory();
+              const mainEl = document.getElementById('inv-grid-main');
+              const hotEl = document.getElementById('inv-grid-hotbar');
+              console.log('[UI] DOM main slots:', mainEl ? mainEl.children.length : 'null');
+              console.log('[UI] DOM hotbar slots:', hotEl ? hotEl.children.length : 'null');
+            } else {
+              console.warn('[UI] openInventory not available:', typeof UI, typeof (UI || {}).openInventory);
+            }
+          }
+        } else {
+          console.warn('[UI] skip claim:', { hasQuest: typeof Quest !== 'undefined', manual: n.manual, isDone: Quest ? Quest.isDone(n.id) : 'N/A' });
         }
         showTip(n);            // 刷新弹窗（已领则显示「已完成 · 奖励已领取」）
         this._renderQuest();  // 完整重绘节点：边框+图标同步更新为 done 态
@@ -3393,4 +3422,33 @@ const UI = {
     });
   },
 
+  /**
+   * MC 风格成就弹窗：右上角滑入，3.5 秒后自动收回。
+   * @param {string} title  成就标题
+   * @param {string} [iconKey]  ASSETS.registry 中的贴图键（默认 'nether_star'）
+   * @param {number} [duration] 显示时长（ms），默认 3500
+   */
+  showAchievement(title, iconKey = 'nether_star', duration = 3500) {
+    const el = document.getElementById('achievement-toast');
+    if (!el) return;
+    const iconSrc = this._assetURL(iconKey);
+    const frameSrc = this._assetURL('blank_row_frame');
+    el.innerHTML = `<div class="achievement-frame">` +
+      (frameSrc ? `<img class="achievement-bg" src="${frameSrc}" alt="">` : '') +
+      (iconSrc ? `<img class="achievement-icon" src="${iconSrc}" alt="${title}">` : '') +
+      `<div class="achievement-text">` +
+      `<span class="achievement-label">成就达成</span>` +
+      `<span class="achievement-title">${title}</span>` +
+      `</div></div>`;
+    el.className = 'toast-visible';
+    if (this._achievementTimeout) clearTimeout(this._achievementTimeout);
+    this._achievementTimeout = setTimeout(() => {
+      el.className = 'toast-hidden';
+    }, duration);
+  },
+
 };
+
+// 暴露到全局，供 quest.js / inventory.js 引用
+if (typeof window !== 'undefined') window.UI = UI;
+if (typeof globalThis !== 'undefined') globalThis.UI = UI;
