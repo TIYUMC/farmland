@@ -16,7 +16,11 @@
     UI.init();
 
     // 用真实贴图替换工具栏 emoji 图标
+    console.log('[init] 开始设置工具栏图标...');
+    console.log('[init] ASSETS.registry 大小:', Object.keys(ASSETS.registry).length);
+    console.log('[init] chest 在 registry 中:', 'chest' in ASSETS.registry);
     _setToolbarIcons();
+    console.log('[init] 工具栏图标设置完成');
 
     // 连接引擎回调
     Engine.onHourChange = (hour, minute) => {
@@ -44,14 +48,16 @@
       if (typeof UI !== 'undefined' && UI._spawnDailyLitter) UI._spawnDailyLitter();
     };
 
-    // 一天结束（午夜24:00）
+    // 一天结束（午夜24:00）：自动存档
     Engine.onDayEnd = () => {
+      SaveGame.save();
       UI.showFullSummary();
     };
 
     // 开始首日
     Engine.start();
     UI.render();
+    _showTitle();
 
     // 键盘快捷键
     document.addEventListener('keydown', (e) => {
@@ -92,6 +98,24 @@
     // 睡觉按钮：主动睡觉（晚上 6 点之后，由 Engine.sleep 内部校验）
     const sleepBtn = document.getElementById('btn-sleep');
     if (sleepBtn) sleepBtn.addEventListener('click', () => Engine.sleep());
+
+    // 存档按钮：立即保存（带闪光效果）
+    const btnSave = document.getElementById('btn-save');
+    if (btnSave) btnSave.addEventListener('click', () => { SaveGame.save(); _flashSave(); });
+
+    // 读档按钮：弹出确认后覆盖当前进度（带闪光效果）
+    const btnLoad = document.getElementById('btn-load');
+    if (btnLoad) btnLoad.addEventListener('click', () => {
+      if (SaveGame.hasSave()) {
+        const summary = SaveGame.getSummary();
+        const msg = summary
+          ? `确定要读档吗？当前进度将被覆盖。\n\n存档：${summary.date} ${String(summary.hour).padStart(2,'0')}:00`
+          : '确定要读档吗？当前进度将被覆盖。';
+        if (confirm(msg)) { SaveGame.load(); _flashSave(); }
+      } else {
+        UI.showStatus('没有找到存档', 2000);
+      }
+    });
 
     // 调试快进按钮（临时功能）：开启后 0.5 秒 = 1 天，方便快速测试作物生长/时间流逝
     const debugBtn = document.getElementById('btn-debug');
@@ -136,14 +160,154 @@
     // 任务书入口：背包内紫色书按钮（调试右边），点开/关任务书；关闭后回到背包
     const invBook = document.getElementById('btn-inv-book');
     if (invBook) invBook.addEventListener('click', () => UI.openQuest());
+
+    // 标题界面按钮绑定
+    const btnNewGame = document.getElementById('btn-new-game');
+    if (btnNewGame) btnNewGame.addEventListener('click', _startNewGame);
+    const btnContinue = document.getElementById('btn-continue');
+    if (btnContinue) btnContinue.addEventListener('click', _continueGame);
+  }
+
+  // ===== 标题界面控制 =====
+  function _showTitle() {
+    var ts = document.getElementById('title-screen');
+    if (!ts) return;
+    var bgUrl = ASSETS.registry['demo_background'];
+    var bg = document.getElementById('title-bg');
+    if (bg && bgUrl) bg.style.backgroundImage = 'url("' + bgUrl + '")';
+    var has = typeof SaveGame !== 'undefined' && SaveGame.hasSave();
+    var contBtn = document.getElementById('btn-continue');
+    if (contBtn) contBtn.style.display = has ? '' : 'none';
+    ts.className = 'overlay-visible';
+    // 字母逐个出现动画
+    _animateTitleLetters();
+    // 按钮弹性入场（延迟错开）
+    _animateButtonsIn();
+    // 浮尘粒子
+    _spawnParticles(12);
+  }
+
+  /** 标题字母逐个弹出（MC 风格） */
+  function _animateTitleLetters() {
+    var logo = document.getElementById('title-logo');
+    if (!logo) return;
+    var text = logo.textContent;
+    logo.innerHTML = '';
+    for (var i = 0; i < text.length; i++) {
+      var span = document.createElement('span');
+      span.className = 'title-letter' + (text[i] === ' ' ? ' space' : '');
+      span.textContent = text[i] === ' ' ? '\u00A0' : text[i];
+      span.style.animationDelay = (i * 0.07) + 's';
+      logo.appendChild(span);
+    }
+  }
+
+  /** 按钮弹性入场（错开延迟） */
+  function _animateButtonsIn() {
+    var btns = document.querySelectorAll('.mc-btn');
+    btns.forEach(function(btn, i) {
+      btn.classList.remove('btn-in');
+      void btn.offsetWidth; // 触发重排
+      btn.style.animationDelay = (0.6 + i * 0.12) + 's';
+      btn.classList.add('btn-in');
+    });
+  }
+
+  /** 浮尘粒子效果 */
+  function _spawnParticles(count) {
+    var container = document.getElementById('title-content');
+    if (!container) return;
+    // 清除旧粒子
+    var old = container.querySelectorAll('.particle');
+    old.forEach(function(p) { p.remove(); });
+    for (var i = 0; i < count; i++) {
+      var p = document.createElement('div');
+      p.className = 'particle';
+      p.style.left = (15 + Math.random() * 70) + '%';
+      p.style.top = (40 + Math.random() * 40) + '%';
+      p.style.animationDelay = (Math.random() * 3) + 's';
+      p.style.animationDuration = (3 + Math.random() * 2) + 's';
+      p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
+      container.appendChild(p);
+    }
+    // 定时清理
+    setTimeout(function() {
+      var ps = container.querySelectorAll('.particle');
+      ps.forEach(function(p) { p.remove(); });
+    }, 6000);
+  }
+
+  /** 存档/读档闪光效果 */
+  function _flashSave() {
+    var el = document.createElement('div');
+    el.className = 'save-flash';
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 700);
+  }
+
+  function _hideTitle() {
+    var ts = document.getElementById('title-screen');
+    if (ts) ts.className = 'overlay-hidden';
+  }
+  function _startNewGame() {
+    _hideTitle();
+    Farm.init();
+    TreeFarm.init();
+    Player.init();
+    Engine.start();
+    UI.render();
+  }
+  function _continueGame() {
+    if (!SaveGame.hasSave()) return;
+    _hideTitle();
+    SaveGame.load();
+  }
+
+  /**
+   * 用 ASSETS.registry 中的真实 base64 贴图替换工具栏里的 emoji 图标。
+   */
+  function _setToolbarIcons() {
+    _setBtnIcon('btn-shop',     'shop');
+    _setBtnIcon('btn-sleep',    'red_bed');
+    _setBtnIcon('btn-debug',    'command_block');
+    _setBtnIcon('btn-inv-shop', 'shop');
+    _setBtnIcon('btn-inv-sleep','red_bed');
+    _setBtnIcon('btn-inv-debug','command_block');
+    _setBtnIcon('btn-inv-book', 'book_purple');
+    _setBtnIcon('btn-save',     'chest');
+    _setBtnIcon('btn-load',     'barrel');
+    _setHudIcon('hud-ico-stamina', 'food_full');
+    _setHudIcon('hud-ico-time',    'time');
+  }
+
+  function _setIconInner(el, assetKey, alt, cls) {
+    if (!el) { console.warn('_setIconInner: el is null'); return false; }
+    if (!ASSETS.registry[assetKey]) { console.warn(`_setIconInner: ${assetKey} not in registry`); return false; }
+    const clsAttr = cls ? ` class="${cls}"` : '';
+    el.innerHTML = `<img src="${ASSETS.registry[assetKey]}" alt="${alt}"${clsAttr}>`;
+    console.log(`_setIconInner: ${assetKey} → ${el.tagName}.${el.className}`);
+    return true;
+  }
+
+  function _setBtnIcon(btnId, assetKey) {
+    const btn = document.getElementById(btnId);
+    if (!btn) { console.warn(`_setBtnIcon: btn ${btnId} not found`); return; }
+    const iconEl = btn.querySelector('.tool-icon');
+    if (!iconEl) { console.warn(`_setBtnIcon: iconEl not found in ${btnId}`); return; }
+    console.log(`_setBtnIcon: ${btnId} → ${assetKey}`, ASSETS.registry[assetKey] ? 'OK' : 'MISSING');
+    _swapIcon(iconEl, assetKey, btnId);
+  }
+
+  /** 把指定 id 的 hud-label span 内部内容替换成贴图（无 class） */
+  function _setHudIcon(hudId, assetKey) {
+    const el = document.getElementById(hudId);
+    _setIconInner(el, assetKey, hudId, '');
   }
 
   function _selectTool(toolId) {
     const btn = document.querySelector(`.tool-btn[data-tool="${toolId}"]`);
     if (btn) { btn.click(); return; }
-    // 工具栏已不显示锄头/水桶/斧头：快捷键 1/2/3 直接装备（保持可玩）
     if (toolId === 'hoe' || toolId === 'water' || toolId === 'axe') {
-      // 木斧头需先购买（20 金锭 + 5 小麦），未拥有则拦截提示
       if (toolId === 'axe' && (!Player.ownedTools || !Player.ownedTools.axe)) {
         UI.showStatus('先去商店 (B) 买把木斧头再砍树', 1500);
         return;
@@ -161,8 +325,8 @@
     Engine.day = 1;
     Engine._resetClock();
     if (typeof UI !== 'undefined') {
-      UI.markFarmDirty();                                  // 重建静态层 + veg 缓存（按新季节着色）
-      if (typeof UI._tickSnow === 'function') UI._tickSnow();   // 立即按新季节调和积雪（春化/冬清/夏秋清空）
+      UI.markFarmDirty();
+      if (typeof UI._tickSnow === 'function') UI._tickSnow();
       if (typeof UI._updateHUD === 'function') UI._updateHUD();
     }
     const names = ['春', '夏', '秋', '冬'];
@@ -178,7 +342,6 @@
     invBtn.innerHTML = '<div class="tool-icon">🎒</div><div class="tool-name">背包</div>';
     invBtn.addEventListener('click', () => UI.openInventory());
     anchor.parentNode.insertBefore(invBtn, anchor);
-    // 背包按钮生成后才换贴图（JS 动态插的，_setToolbarIcons 来不及）
     const iconEl = invBtn.querySelector('.tool-icon');
     if (iconEl) _setIconInner(iconEl, 'bundle_filled', '背包', 'tool-icon-img');
   }
@@ -189,37 +352,6 @@
     UI.toggleScene();
   }
 
-  /**
-   * 用 ASSETS.registry 中的真实 base64 贴图替换工具栏里的 emoji 图标。
-   * 仅替换部分匹配上的；不匹配则保留原 emoji（兜底）。
-   */
-  function _setToolbarIcons() {
-    // 商店按钮 → shop 纹理
-    _setBtnIcon('btn-shop', 'shop');
-    // 睡觉按钮 → 红床贴图（Red_Bed，来自桌面星露谷素材）
-    _setBtnIcon('btn-sleep', 'red_bed');
-    // 调试按钮 → Command_Block 贴图（用户桌面素材，已登记进 registry）
-    _setBtnIcon('btn-debug', 'command_block');
-    // 背包内顶部操作行三按钮（商店 / 睡觉 / 调试）同款贴图
-    _setBtnIcon('btn-inv-shop', 'shop');
-    _setBtnIcon('btn-inv-sleep', 'red_bed');
-    _setBtnIcon('btn-inv-debug', 'command_block');
-    _setBtnIcon('btn-inv-book', 'book_purple');
-
-    // HUD 图标换贴图
-    _setHudIcon('hud-ico-stamina',  'food_full');
-    _setHudIcon('hud-ico-time',  'time');
-  }
-
-  /** 把图标换成贴图：注册表里没有该贴图就不动（保留原 emoji 兜底），成功返回 true。
-   *  cls 留空则不写 class 属性（HUD 图标用），否则写 class="cls"。 */
-  function _setIconInner(el, assetKey, alt, cls) {
-    if (!el || !ASSETS.registry[assetKey]) return false;
-    const clsAttr = cls ? ` class="${cls}"` : '';
-    el.innerHTML = `<img src="${ASSETS.registry[assetKey]}" alt="${alt}"${clsAttr}>`;
-    return true;
-  }
-
   /** 把图标换成贴图，同时保留原本在 .tool-icon 内的 .tool-badge（如种子价格标签） */
   function _swapIcon(iconEl, assetKey, alt) {
     const badge = iconEl.querySelector('.tool-badge');
@@ -227,19 +359,9 @@
     if (badge) iconEl.appendChild(badge);
   }
 
-  /** 把指定 id 的按钮的 .tool-icon 替换成贴图 */
-  function _setBtnIcon(btnId, assetKey) {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    const iconEl = btn.querySelector('.tool-icon');
-    _swapIcon(iconEl, assetKey, btnId);
-  }
-
-  /** 把指定 id 的 hud-label span 内部内容替换成贴图（无 class） */
-  function _setHudIcon(hudId, assetKey) {
-    const el = document.getElementById(hudId);
-    _setIconInner(el, assetKey, hudId, '');
-  }
+  // 暴露到全局，供 HTML onclick 使用
+  window._startNewGame = _startNewGame;
+  window._continueGame = _continueGame;
 
   // 启动
   window.addEventListener('DOMContentLoaded', init);
