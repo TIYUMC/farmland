@@ -1,147 +1,265 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
+
 <head>
+
   <meta charset="UTF-8">
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>Framland· Phase 1</title>
+
   <link rel="stylesheet" href="css/style.css">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
 </head>
+
 <body>
+
   <div id="game-container">
+
     <!-- 标题屏幕 -->
+
     <div id="title-screen" class="overlay-visible">
-      <div id="title-bg"></div>
+
+      <div id='title-bg' style='background-image:url(assets/圆石背景.png)'></div>
+
       <div id="title-content">
+
         <h1 id="title-logo">Framland</h1>
+
         <div id="title-buttons">
+
           <div id="btn-new-game" class="mc-btn">单人游戏</div>
+
           <div id="btn-continue" class="mc-btn" style="display:none">继续游戏</div>
+
         </div>
+
         <div id="title-version">v0.1 · Phase 1</div>
+
       </div>
+
     </div>
+
+
 
     <!-- HUD 顶栏 -->
+
     <div id="hud-bar">
+
       <div class="hud-item"><span class="hud-label" id="hud-ico-time">⏰</span><span id="hud-datetime">春1日 第1年 06:00</span></div>
+
       <div class="hud-item">
+
         <span class="hud-label" id="hud-ico-stamina">⚡</span>
+
         <div id="stamina-bar-bg"><div id="stamina-bar-fill"></div></div>
+
         <span id="hud-stamina">20/20</span>
+
       </div>
+
       <div class="debug-cluster">
+
         <div class="tool-btn" id="btn-inv-debug"><div class="tool-icon"></div><div class="tool-name">调试</div></div>
+
         <select id="season-jump">
+
           <option value="">跳季…</option>
+
           <option value="0">春（第1天）</option>
+
           <option value="1">夏（第1天）</option>
+
           <option value="2">秋（第1天）</option>
+
           <option value="3">冬（第1天）</option>
+
         </select>
+
       </div>
+
     </div>
 
-    <!-- 游戏画布 -->
-    <canvas id="game-canvas"></canvas>
-    <!-- 商店物品图标叠层（DOM 渲染，清晰度与工具栏一致） -->
-    <div id="shop-icons"></div>
+
+
+    <!-- 游戏画布区域（居中容器） -->
+
+    <div id="game-area">
+
+      <canvas id="game-canvas"></canvas>
+
+      <!-- 商店物品图标叠层（DOM 渲染，清晰度与工具栏一致） -->
+
+      <div id="shop-icons"></div>
+
+    </div>
+
+
 
     <!-- 底部工具栏 -->
     <div id="toolbar">
-      <div class="tool-btn held-slot" id="held-slot">
-        <div class="tool-icon" id="held-icon"></div>
-        <div class="tool-name" id="held-name"></div>
-      </div>
-      <div class="tool-separator"></div>
+      <div id="bottom-hotbar" role="grid" aria-label="快捷栏"></div>
       <div class="tool-btn" id="btn-shop">
         <div class="tool-icon">🏪</div>
         <div class="tool-name">商店</div>
-      </div>
-      <div class="tool-btn" id="btn-sleep">
-        <div class="tool-icon">🛌</div>
-        <div class="tool-name">睡觉</div>
       </div>
       <div class="tool-btn" id="btn-debug">
         <div class="tool-icon">⚡</div>
         <div class="tool-name">调试</div>
       </div>
-      <div class="tool-separator"></div>
       <div class="tool-btn" id="btn-save">
         <div class="tool-icon">💾</div>
         <div class="tool-name">存档</div>
       </div>
-      <div class="tool-btn" id="btn-load">
-        <div class="tool-icon">📂</div>
-        <div class="tool-name">读档</div>
-      </div>
     </div>
+
+
 
     <!-- 状态提示 -->
+
     <div id="status-message" class="status-hidden"></div>
+
     <div id="achievement-toast" class="toast-hidden"></div>
+
     <div id="busy-indicator" class="busy-hidden">
+
       <img id="busy-icon" class="busy-icon" alt="" src="">
+
       <span id="busy-text">正在…中</span>
+
       <div class="busy-bar"><div id="busy-fill"></div></div>
+
     </div>
+
+
 
     <!-- 背包界面（MC 物品栏 GUI：inventory.png 纹理背景） -->
+
     <div id="inventory-overlay" class="overlay-hidden">
+
       <div id="inventory-panel">
+
         <div id="inv-topbar">
+
           <div class="tool-btn" id="btn-inv-shop"><div class="tool-icon"></div><div class="tool-name">商店</div></div>
-          <div class="tool-btn" id="btn-inv-sleep"><div class="tool-icon"></div><div class="tool-name">睡觉</div></div>
+
+
+
           <div class="tool-btn" id="btn-inv-book"><div class="tool-icon"></div><div class="tool-name">任务</div></div>
+
         </div>
+
         <!-- MC 2×2 合成格：放原木 → 出木板 -->
+
         <div id="inv-craft">
+
           <div id="inv-craft-grid">
+
             <div class="craft-cell" data-cell="0"></div>
+
             <div class="craft-cell" data-cell="1"></div>
+
             <div class="craft-cell" data-cell="2"></div>
+
             <div class="craft-cell" data-cell="3"></div>
+
           </div>
+
           <div id="inv-craft-out" class="craft-cell"></div>
+
         </div>
+
         <!-- 主物品栏 9×3 -->
+
         <div id="inv-grid-main" class="inv-grid" role="grid" aria-label="物品栏"></div>
+
         <!-- 快捷栏 9×1：放置全部出售 -->
+
         <div id="inv-grid-hotbar" class="inv-grid" role="grid" aria-label="快捷栏"></div>
+
       </div>
+
     </div>
+
+
 
     <!-- 任务书面板（Advancement / 进度树）：背包内书按钮打开，关闭后回到背包 -->
+
     <div id="quest-overlay" class="overlay-hidden">
+
       <div id="quest-frame-wrap">
+
         <div id="quest-tabs"></div>
+
         <div id="quest-panel">
+
           <div id="quest-tree"></div>
+
         </div>
+
       </div>
+
     </div>
+
+
 
     <!-- 每日结算 -->
+
     <div id="day-summary" class="panel-hidden">
+
       <div id="summary-panel">
+
         <div id="summary-header">🌙 一天结束</div>
+
         <div id="summary-content"></div>
+
         <button id="summary-next">关闭</button>
+
       </div>
+
     </div>
+
   </div>
 
+
+
   <script src="js/assets.js"></script>
+
   <script src="js/data.js"></script>
+
   <script src="js/engine.js"></script>
+
   <script src="js/farm.js"></script>
+
   <script src="js/player.js"></script>
+
   <script src="js/economy.js"></script>
+
   <script src="js/juice.js"></script>
+
   <script src="js/quest.js"></script>
+
   <script src="js/ui.js"></script>
+
   <script src="js/inventory.js"></script>
+
   <script src="js/shop.js"></script>
+
   <script src="js/treefarm.js"></script>
+
+  <script src="js/savegame.js"></script>
+
   <script src="js/main.js"></script>
+
 </body>
+
 </html>
+

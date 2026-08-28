@@ -21,6 +21,7 @@
     console.log('[init] chest 在 registry 中:', 'chest' in ASSETS.registry);
     _setToolbarIcons();
     console.log('[init] 工具栏图标设置完成');
+    UI._renderBottomHotbar();
 
     // 连接引擎回调
     Engine.onHourChange = (hour, minute) => {
@@ -103,20 +104,6 @@
     const btnSave = document.getElementById('btn-save');
     if (btnSave) btnSave.addEventListener('click', () => { SaveGame.save(); _flashSave(); });
 
-    // 读档按钮：弹出确认后覆盖当前进度（带闪光效果）
-    const btnLoad = document.getElementById('btn-load');
-    if (btnLoad) btnLoad.addEventListener('click', () => {
-      if (SaveGame.hasSave()) {
-        const summary = SaveGame.getSummary();
-        const msg = summary
-          ? `确定要读档吗？当前进度将被覆盖。\n\n存档：${summary.date} ${String(summary.hour).padStart(2,'0')}:00`
-          : '确定要读档吗？当前进度将被覆盖。';
-        if (confirm(msg)) { SaveGame.load(); _flashSave(); }
-      } else {
-        UI.showStatus('没有找到存档', 2000);
-      }
-    });
-
     // 调试快进按钮（临时功能）：开启后 0.5 秒 = 1 天，方便快速测试作物生长/时间流逝
     const debugBtn = document.getElementById('btn-debug');
     if (debugBtn) {
@@ -172,9 +159,6 @@
   function _showTitle() {
     var ts = document.getElementById('title-screen');
     if (!ts) return;
-    var bgUrl = ASSETS.registry['demo_background'];
-    var bg = document.getElementById('title-bg');
-    if (bg && bgUrl) bg.style.backgroundImage = 'url("' + bgUrl + '")';
     var has = typeof SaveGame !== 'undefined' && SaveGame.hasSave();
     var contBtn = document.getElementById('btn-continue');
     if (contBtn) contBtn.style.display = has ? '' : 'none';
@@ -256,11 +240,13 @@
     Player.init();
     Engine.start();
     UI.render();
+    UI._renderBottomHotbar();
   }
   function _continueGame() {
     if (!SaveGame.hasSave()) return;
     _hideTitle();
     SaveGame.load();
+    UI._renderBottomHotbar();
   }
 
   /**
@@ -275,7 +261,6 @@
     _setBtnIcon('btn-inv-debug','command_block');
     _setBtnIcon('btn-inv-book', 'book_purple');
     _setBtnIcon('btn-save',     'chest');
-    _setBtnIcon('btn-load',     'barrel');
     _setHudIcon('hud-ico-stamina', 'food_full');
     _setHudIcon('hud-ico-time',    'time');
   }

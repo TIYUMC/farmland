@@ -219,3 +219,6 @@ const Quest = {
     return item;
   },
 };
+
+if (typeof window !== 'undefined') window.Quest = Quest;
+if (typeof globalThis !== 'undefined') globalThis.Quest = Quest;

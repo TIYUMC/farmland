@@ -153,7 +153,7 @@ const DATA = {
   //   4) 布局：每分类一条水平直线，节点间距 DX=75，y 统一 320（由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现）。
   QUESTS: [
     // —— 入门指南（Getting Started 弧线：空手抵达 → 开垦 → 播种 → 收获 → 置办工具 → 砍树 → 致富；三条支线各由主线网关解锁，参考 FTB Academy/University 任务书结构）——
-    { id:'root',    parent:null,    x:80,   y:320, icon:'quest_root_hoe', title:'初来乍到', desc:'欢迎来到 Farmland，点击领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{money:5} },
+    { id:'root',    parent:null,    x:80,   y:320, icon:'book_purple', title:'初来乍到', desc:'欢迎来到 Farmland，点击领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{money:5} },
     { id:'a1',      parent:'root',  x:155,  y:320, icon:'dirt',          title:'开垦田地', desc:'用锄头开垦 1 块耕地，翻松土壤播下希望。', cat:'core', track:{k:'till',  n:1} },
     // —— 网关：播下第一粒种子 → 解锁「耕作」支线 ——
     { id:'g_farm',  parent:'a1',    x:230,  y:320, icon:'wheat_seeds',   title:'播下种子', desc:'在耕地播下 1 颗种子，安顿下来 —— 耕作支线已开启', cat:'core', track:{k:'plant', n:1} },
@@ -161,30 +161,30 @@ const DATA = {
     // —— 网关：购得木斧 → 解锁「工匠」支线 ——
     { id:'g_tools', parent:'m3',    x:380,  y:320, icon:'wooden_axe',   title:'置办农具', desc:'在商店购得木斧头 —— 工匠支线已开启',     cat:'core', track:{k:'ownTool', tool:'axe'} },
     // —— 网关：砍倒第一棵树 → 解锁「采集」支线 ——
-    { id:'g_forage',parent:'g_tools',x:455, y:320, icon:'oak_log',       title:'林间初探', desc:'踏入林地砍倒第一棵树 —— 采集支线已开启', cat:'core', track:{k:'chop', n:1} },
+    { id:'g_forage',parent:'g_tools',x:455, y:320, icon:'oak_log_3d',   title:'林间初探', desc:'踏入林地砍倒第一棵树 —— 采集支线已开启', cat:'core', track:{k:'chop', n:1} },
     { id:'m4',      parent:'g_forage',x:530,y:320, icon:'money',        title:'小有积蓄', desc:'累计赚取 100 金锭，农场初具规模。',              cat:'core', track:{k:'earn',  n:100} },
     // —— 耕作支线（种植 → 收获，由主线「播下种子」解锁）——
-        { id:'fa1',  parent:'g_farm',  x:80,  y:200, icon:'wheat_seeds', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
+        { id:'fa1',  parent:'g_farm',  x:80,  y:200, icon:'potato', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
         { id:'fa2',  parent:'fa1',     x:155, y:200, icon:'小麦',        title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 30 金锭酬金。',       cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:30 } },
     // —— 采集支线（砍树 → 补种 → 积材，由主线「林间初探」解锁）——
         { id:'fo1',  parent:'g_forage', x:80,  y:200, icon:'oak_sapling', title:'林间驿站', desc:'为林间驿站供应 20 份原木修缮木屋，换取 5 株补种树苗。', cat:'forage', manual:true, track:{k:'submit', item:'wood', n:20}, reward:{ items:[{id:'saplings', count:5}] } },
-        { id:'fo2',  parent:'fo1',     x:155, y:200, icon:'oak_log',     title:'猎人补给', desc:'向深山猎人补给 40 份原木，换取 30 金锭犒赏。',           cat:'forage', manual:true, track:{k:'submit', item:'wood', n:40}, reward:{ money:30 } },
+        { id:'fo2',  parent:'fo1',     x:155, y:200, icon:'sunflower',     title:'猎人补给', desc:'向深山猎人补给 40 份原木，换取 30 金锭犒赏。',           cat:'forage', manual:true, track:{k:'submit', item:'wood', n:40}, reward:{ money:30 } },
     // —— 工匠支线（购斧 → 伐木，由主线「置办农具」解锁）——
-        { id:'to1',  parent:'g_tools',  x:80,  y:200, icon:'oak_log',     title:'木工坊供货', desc:'向木工坊交付 16 块木板，换回 10 份原木继续加工。',     cat:'tools', manual:true, track:{k:'submit', item:'planks', n:16}, reward:{ items:[{id:'wood', count:10}] } },
-        { id:'to2',  parent:'to1',     x:155, y:200, icon:'oak_log',     title:'建筑委托', desc:'承接镇上建筑委托，交付 32 块木板换取 40 金锭。',         cat:'tools', manual:true, track:{k:'submit', item:'planks', n:32}, reward:{ money:40 } },
+        { id:'to1',  parent:'g_tools',  x:80,  y:200, icon:'crafting_arrow',     title:'木工坊供货', desc:'向木工坊交付 16 块木板，换回 10 份原木继续加工。',     cat:'tools', manual:true, track:{k:'submit', item:'planks', n:16}, reward:{ items:[{id:'wood', count:10}] } },
+        { id:'to2',  parent:'to1',     x:155, y:200, icon:'command_block',     title:'建筑委托', desc:'承接镇上建筑委托，交付 32 块木板换取 40 金锭。',         cat:'tools', manual:true, track:{k:'submit', item:'planks', n:32}, reward:{ money:40 } },
     // —— 手动教程（FTB manual 任务：悬停看目标/奖励/前后置，点击节点领取；提交物品换奖励，不自动完成）——
     // reward 结构：{ money?, items:[{id, count}] }；id 支持 money/wood/planks/saplings/axe/seed:<cropId>/crop:<cropId>。
-    { id:'tut1', parent:'root',   x:80,  y:440, icon:'dirt',        title:'整备行囊', desc:'教程：点击领取启程物资 —— 5 颗小麦种子，正式踏上农场之旅。', cat:'core', manual:true, tutorial:true, track:{k:'manual'}, reward:{ items:[{id:'seed:wheat', count:5}] } },
-    { id:'tut2', parent:'root',   x:80,   y:440, icon:'wheat_seeds', title:'春种秋收', desc:'教程：用小麦种子播种，麦穗成熟后收获；将 5 份小麦交回，换取木料。', cat:'farm', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:5}, reward:{ items:[{id:'wood', count:3}] } },
-    { id:'tut3', parent:'root',   x:80,   y:440, icon:'oak_log',     title:'巧手合成', desc:'教程：把 1 个橡木原木放入背包 2×2 合成格制得 4 木板，交回换取木料。', cat:'tools', manual:true, tutorial:true, track:{k:'submit', item:'planks', n:4}, reward:{ items:[{id:'wood', count:4}] } },
-    { id:'tut4', parent:'root',   x:80,   y:440, icon:'wooden_axe', title:'林间拾薪', desc:'教程：持斧前往树场砍伐，集齐 4 份木头交回，换取树苗以便补种。', cat:'forage', manual:true, tutorial:true, track:{k:'submit', item:'wood', n:4}, reward:{ items:[{id:'saplings', count:3}] } },
-    { id:'tut5', parent:'tut1', x:155, y:440, icon:'money',       title:'集市贸易', desc:'教程：将收获的小麦带到商店售出，用 20 份小麦换取 20 金锭，打通经济循环。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ money:20 } },
+    { id:'tut1', parent:'root',   x:80,  y:440, icon:'bundle_filled', title:'整备行囊', desc:'点击领取启程物资 —— 5 颗小麦种子，正式踏上农场之旅。', cat:'core', manual:true, tutorial:true, track:{k:'manual'}, reward:{ items:[{id:'seed:wheat', count:5}] } },
+    { id:'tut2', parent:'root',   x:80,   y:440, icon:'wheat_stage0', title:'春种秋收', desc:'用小麦种子播种，麦穗成熟后收获；将 5 份小麦交回，换取木料。', cat:'farm', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:5}, reward:{ items:[{id:'wood', count:3}] } },
+    { id:'tut3', parent:'root',   x:80,   y:440, icon:'cherry_sapling',     title:'巧手合成', desc:'把 1 个橡木原木放入背包 2×2 合成格制得 4 木板，交回换取木料。', cat:'tools', manual:true, tutorial:true, track:{k:'submit', item:'planks', n:4}, reward:{ items:[{id:'wood', count:4}] } },
+    { id:'tut4', parent:'root',   x:80,   y:440, icon:'wooden_hoe', title:'林间拾薪', desc:'持斧前往树场砍伐，集齐 4 份木头交回，换取树苗以便补种。', cat:'forage', manual:true, tutorial:true, track:{k:'submit', item:'wood', n:4}, reward:{ items:[{id:'saplings', count:3}] } },
+    { id:'tut5', parent:'tut1', x:155, y:440, icon:'shop',       title:'集市贸易', desc:'将收获的小麦带到商店售出，用 20 份小麦换取 20 金锭，打通经济循环。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ money:20 } },
   ],
   // 选项卡（分类页签）。id 与 QUESTS[].cat 对应；
   // tab/selected 为选项卡底图贴图 key；icon 为该分类在选项卡上的代表物贴图 key。
   // 渲染时按数组次序拼成 Above_Left / Above_Middle×(N-2) / Above_Right 的小方格条。
   QUEST_TABS: [
-    { id:'core',   label:'入门指南', icon:'quest_root_hoe', tab:'advancement_tab_above_left',  selected:'advancement_tab_above_left_selected' },
+    { id:'core',   label:'入门指南', icon:'book_purple', tab:'advancement_tab_above_left',  selected:'advancement_tab_above_left_selected' },
     // 支线选项卡：prereq 指向主线(入门)的「网关」任务 id，未完成前选项卡显示锁且不可点开；
     // 每个支线在主线各有一个专属网关(g_farm/g_forage/g_tools)，完成即解锁对应支线，其 desc 写明解锁提示。
     { id:'farm',   label:'耕作',     icon:'wheat_seeds', tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_farm' },

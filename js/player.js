@@ -312,3 +312,9 @@ const Player = {
     this.selectedTool = toolId;
   },
 };
+
+// ─────────────────────────────────────────────
+// 全局暴露（供 quest.js / UI 等模块跨文件访问）
+// ─────────────────────────────────────────────
+if (typeof window !== 'undefined') window.Player = Player;
+if (typeof globalThis !== 'undefined') globalThis.Player = Player;

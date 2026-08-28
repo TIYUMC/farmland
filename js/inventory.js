@@ -8,7 +8,7 @@
  *  ① 开关：openInventory · closeInventory
  *  ② 渲染：renderInventory · _makeSlot
  *  ③ MC 鼠标逻辑：_invMouseDown · _invPickUp · _invDeposit · _invMouseOver
- *                 · _invMouseUp · _invDblClick · _invShiftTransfer · _invWheel
+ *                 · _invMouseUp · _invDblClick · _invShiftTransfer
  *                 · _invReturnHeld · _invHeldGhost · _slotIndexFromEvent · _sameIdentity
  *  ④ 合成格：_craftGrid … _renderCraft（2×2，改动后重建 invSlots 以同步数量）
  */
@@ -69,7 +69,7 @@ UI.renderInventory = function() {
   const main = document.getElementById('inv-grid-main');
   main.innerHTML = '';
   for (let i = 0; i < 27; i++) {
-    const s = this._makeSlot(Player.invSlots[i], i);
+    const s = this._makeSlot(Player.invSlots[i], i, false);
     s.style.setProperty('--i', i);
     main.appendChild(s);
   }
@@ -79,9 +79,8 @@ UI.renderInventory = function() {
   hotbar.innerHTML = '';
   for (let i = 0; i < 9; i++) {
     const idx = 27 + i;
-    const s = this._makeSlot(Player.invSlots[idx], idx);
+    const s = this._makeSlot(Player.invSlots[idx], idx, true, i === Player._hotbarSel);
     s.style.setProperty('--i', i);
-    if (i === Player._hotbarSel) s.classList.add('inv-sel');
     hotbar.appendChild(s);
   }
 
@@ -92,10 +91,17 @@ UI.renderInventory = function() {
 
 
 /** 构造一个物品格子 DOM（仅展示；交互全部走网格事件委托，不在格子上绑 click） */
-UI._makeSlot = function(slot, index) {
+UI._makeSlot = function(slot, index, isHotbar, isSelected) {
   const el = document.createElement('div');
   el.className = 'inv-slot';
   el.dataset.index = index;
+
+  // 快捷栏选中格使用 gamemode_switcher_selection 贴图
+  if (isHotbar && isSelected) {
+    const bgSrc = this._assetURL('gamemode_switcher_selection');
+    if (bgSrc) el.style.cssText += ';background-image:url("' + bgSrc + '");background-size:cover;background-repeat:no-repeat;background-position:center';
+  }
+
   if (!slot) return el;                      // 空槽
   const cls = slot.kind === 'seed' ? 'seed' : (slot.kind === 'tool' ? 'tool' : 'crop');
   el.classList.add(cls);
@@ -446,22 +452,13 @@ UI._invReturnHeld = function() {
   }
 };
 
-/** 滚轮：切换快捷栏选中格并装备该格工具/种子 */
-UI._invWheel = function(e) {
-  if (!this._inventoryOpen) return;
-  e.preventDefault();
-  const dir = e.deltaY > 0 ? 1 : -1;
-  Player._hotbarSel = (Player._hotbarSel + dir + 9) % 9;
-  this._invApplyHotbarSel();
-};
-
 /** 应用当前快捷栏选中格：装备其工具/种子 + 重绘高亮 + 提示 */
 UI._invApplyHotbarSel = function() {
   const slot = Player.invSlots[27 + Player._hotbarSel];
   if (slot && slot.kind === 'tool') Player.selectTool(slot.toolId);
   else if (slot && slot.kind === 'seed') Player.selectTool('seed-' + slot.seedId);
   this._updateHeldSlot();
-  this.renderInventory();               // 重绘以移动 .inv-sel 高亮
+  this.renderInventory();               // 重绘以更新快捷栏选中背景贴图
   const names = { hoe: '锄头', water: '水桶', axe: '斧头', sapling: '树苗' };
   const msg = slot
     ? (slot.kind === 'seed' ? '选择种子：' + slot.label : '选择工具：' + (names[slot.toolId] || slot.label))
@@ -541,11 +538,9 @@ UI._invBindOnce = function() {
   };
   bind('inv-grid-main');
   bind('inv-grid-hotbar');
-  // 滚轮切快捷栏选中
+  // ghost 跟随鼠标
   const ov = document.getElementById('inventory-overlay');
   if (ov) {
-    ov.addEventListener('wheel', (e) => this._invWheel(e), { passive: false });
-    // ghost 跟随鼠标
     ov.addEventListener('mousemove', (e) => {
       const gg = document.getElementById('inv-held');
       if (gg && gg.style.display !== 'none') {
@@ -672,3 +667,68 @@ UI._renderCraft = function() {
 UI._seedIconKey = function(cropId) {
   return ({ wheat: 'wheat_seeds', potato: 'potato', strawberry: 'mc_sweet_berries' })[cropId] || 'wheat_seeds';
 };
+
+/** 渲染底部始终可见的 MC 风格快捷栏（9 格） */
+UI._renderBottomHotbar = function() {
+  const grid = document.getElementById('bottom-hotbar');
+  if (!grid) return;
+  if (!Player.invSlots) Player._rebuildInvSlots();
+  UI._bindBottomHotbar();
+  grid.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const idx = 27 + i;
+    const slot = Player.invSlots[idx];
+    const cell = document.createElement('div');
+    cell.className = 'hotbar-cell';
+    if (i === Player._hotbarSel) cell.classList.add('selected');
+    cell.dataset.index = i;
+    const bgKey = (i === Player._hotbarSel) ? 'gamemode_switcher_selection' : 'gamemode_switcher_slot';
+    const bgSrc = this._assetURL(bgKey);
+    if (bgSrc) cell.style.backgroundImage = 'url("' + bgSrc + '")';
+    if (slot) {
+      const icon = document.createElement('img');
+      icon.className = 'item-icon';
+      const toolKeyMap = { hoe: 'wooden_hoe', water: 'water_bucket', axe: 'wooden_axe', sapling: 'oak_sapling' };
+      const iconSrc = slot.kind === 'tool'
+        ? this._assetURL(toolKeyMap[slot.toolId] || slot.toolId)
+        : slot.kind === 'seed'
+          ? this._assetURL(this._seedIconKey(slot.seedId))
+          : this._assetURL(slot.key || slot.kind);
+      if (iconSrc) icon.src = iconSrc;
+      else if (slot.kind === 'seed') icon.src = this._assetURL('wheat_seeds');
+      cell.appendChild(icon);
+      if (slot.count > 1) {
+        const cnt = document.createElement('span');
+        cnt.className = 'item-count';
+        cnt.textContent = slot.count;
+        cell.appendChild(cnt);
+      }
+    }
+    grid.appendChild(cell);
+  }
+};
+
+/** 一次性绑定底部快捷栏滚轮和点击事件 */
+UI._bindBottomHotbar = function() {
+  if (this._bottomHotbarBound) return;
+  this._bottomHotbarBound = true;
+  const grid = document.getElementById('bottom-hotbar');
+  if (!grid) return;
+  document.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = Math.sign(e.deltaY || e.deltaX);
+    Player._hotbarSel = (Player._hotbarSel + delta + 9) % 9;
+    UI._invApplyHotbarSel();
+    UI._renderBottomHotbar();
+  }, { passive: false });
+  grid.addEventListener('click', (e) => {
+    const cell = e.target.closest('.hotbar-cell');
+    if (!cell) return;
+    const i = parseInt(cell.dataset.index, 10);
+    if (isNaN(i)) return;
+    Player._hotbarSel = i;
+    UI._invApplyHotbarSel();
+    UI._renderBottomHotbar();
+  });
+};
+
