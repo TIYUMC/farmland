@@ -6,7 +6,9 @@
 
   <meta charset="UTF-8">
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- viewport-fit=cover 让内容延伸到刘海屏安全区；禁缩放避免误触双指放大打乱画布比例 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
 
   <title>Framland· Phase 1</title>
 
@@ -28,9 +30,9 @@
 
     <div id="title-screen" class="overlay-visible">
 
+      <canvas id="title-particles"></canvas>
       <div id='title-bg' style='background-image:url(assets/圆石背景.png)'></div>
-
-      <div id="title-content">
+      <div id="title-content" style="z-index:10">
 
         <h1 id="title-logo">Framland</h1>
 
@@ -108,8 +110,12 @@
     <div id="toolbar">
       <div id="bottom-hotbar" role="grid" aria-label="快捷栏"></div>
       <div class="tool-btn" id="btn-shop">
-        <div class="tool-icon">🏪</div>
+        <div class="tool-icon"></div>
         <div class="tool-name">商店</div>
+      </div>
+      <div class="tool-btn" id="btn-quest">
+        <div class="tool-icon"></div>
+        <div class="tool-name">任务</div>
       </div>
       <div class="tool-btn" id="btn-debug">
         <div class="tool-icon">⚡</div>
@@ -147,15 +153,7 @@
 
       <div id="inventory-panel">
 
-        <div id="inv-topbar">
-
-          <div class="tool-btn" id="btn-inv-shop"><div class="tool-icon"></div><div class="tool-name">商店</div></div>
-
-
-
-          <div class="tool-btn" id="btn-inv-book"><div class="tool-icon"></div><div class="tool-name">任务</div></div>
-
-        </div>
+        <!-- 商店 / 任务 入口已按用户要求移到主页面底部工具栏（与快捷栏、背包、存档同排） -->
 
         <!-- MC 2×2 合成格：放原木 → 出木板 -->
 
@@ -191,7 +189,7 @@
 
 
 
-    <!-- 任务书面板（Advancement / 进度树）：背包内书按钮打开，关闭后回到背包 -->
+    <!-- 任务书面板（Advancement / 进度树）：底部工具栏紫色书按钮（#btn-quest）打开，关闭回到主页面 -->
 
     <div id="quest-overlay" class="overlay-hidden">
 
@@ -228,6 +226,10 @@
     </div>
 
   </div>
+
+
+
+  <!-- 竖屏提示已移除：改为画布按可用空间自适应缩小，竖屏/横屏都能直接进游戏 -->
 
 
 

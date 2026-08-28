@@ -5,7 +5,7 @@
  *
  * 埋点约定（各模块成功动作后调用，全部用 typeof Quest 守卫，零回归风险）：
  *   Farm.till/plant/harvest  → Quest.trigger('till'|'plant'|'harvest', count)
- *   TreeFarm.chop/plantSapling → Quest.trigger('chop'|'plantSapling')
+ *   TreeFarm.chop/plantAcorn → Quest.trigger('chop'|'plantAcorn')
  *   Player.addWood           → Quest.trigger('wood', amount)
  *   Player.addMoney          → Quest.trigger('earn', amount)
  *   Economy.buyTool         → Quest.trigger('ownTool', toolId)
@@ -91,11 +91,41 @@ const Quest = {
   // ─────────────────────────────────────────────
   // 手动解锁成就（FTB 风格：点节点弹「领取奖励」→ 校验前置 → 发奖）
   // ─────────────────────────────────────────────
+
+  /** 构建「支线入口节点 id → 解锁它的主线网关节点 id」映射。
+   *  与 UI 层 _renderQuest 里的 gatewayOf 同逻辑（两处必须保持一致，否则「显示锁着却点得动」）。
+   *  规则：节点所属分类若与父节点不同类（或父节点不存在），其真实前置改判为该选项卡的网关节点。
+   *  典型受害者：tut2/tut3/tut4（parent:'root' 属 core，自身分属 farm/tools/forage），
+   *  真实前置应是 g_farm/g_tools/g_forage，而非 root。 */
+  _gatewayMap() {
+    const quests = (typeof DATA !== 'undefined' && DATA.QUESTS) || [];
+    const tabs = (typeof DATA !== 'undefined' && DATA.QUEST_TABS) || [];
+    const byId = {};
+    quests.forEach(q => { byId[q.id] = q; });
+    const gatewayOf = {};
+    tabs.forEach(t => {
+      if (!t.prereq || !byId[t.prereq]) return;
+      quests.forEach(n => {
+        if (n.cat !== t.id) return;
+        const p = n.parent ? byId[n.parent] : null;
+        if (!p || p.cat !== n.cat) gatewayOf[n.id] = t.prereq;
+      });
+    });
+    return gatewayOf;
+  },
+
+  /** 取任务的真实前置 id 列表：网关边优先于树边（与 UI 层 preOf 同语义） */
+  _prereqIds(q) {
+    if (!q) return [];
+    const g = this._gatewayMap()[q.id];
+    if (g) return [g];
+    return q.parent ? [q.parent] : [];
+  },
+
   /** 该手动成就当前是否可领取（前置全部完成） */
   _manualClaimable(q) {
     if (!q) return false;
-    const pre = [];
-    if (q.parent) pre.push(q.parent);
+    const pre = this._prereqIds(q);   // 网关边优先，与 UI 显示的前置一致
     if (Array.isArray(q.prereq)) pre.push.apply(pre, q.prereq); // 支持显式前置数组
     if (!pre.every(pid => this.isDone(pid))) return false;
     // 提交型：还需持有足够物品
@@ -135,14 +165,14 @@ const Quest = {
     if (reward.items) for (const it of reward.items) this._grantItem(it);
   },
 
-  /** 单条奖励物品 → Player 字段（money/wood/planks/saplings/axe/seed:<crop>/crop:<crop>） */
+  /** 单条奖励物品 → Player 字段（money/wood/planks/acorns/axe/seed:<crop>/crop:<crop>） */
   _grantItem(it) {
     if (!it || typeof Player === 'undefined') return;
     const id = it.id, n = it.count || 1;
     if (id === 'money') Player.addMoney(n);
     else if (id === 'wood') Player.addWood(n);
     else if (id === 'planks') Player.addPlanks(n);
-    else if (id === 'saplings') Player.addSaplings(n);
+    else if (id === 'acorns') Player.addAcorns(n);
     else if (id === 'axe') {
       Player.ownedTools.axe = true;
       if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
@@ -167,7 +197,7 @@ const Quest = {
     if (item === 'money') return Player.money >= need;
     if (item === 'wood') return Player.wood >= need;
     if (item === 'planks') return Player.planks >= need;
-    if (item === 'saplings') return Player.saplings >= need;
+    if (item === 'acorns') return Player.acorns >= need;
     if (item.indexOf('seed:') === 0) return (Player.seeds[item.slice(5)] || 0) >= need;
     if (item.indexOf('crop:') === 0) return (Player.inventory[item.slice(5)] || 0) >= need;
     return false;
@@ -180,7 +210,7 @@ const Quest = {
     if (item === 'money') { if (Player.money < need) return false; Player.money -= need; return true; }
     if (item === 'wood') { if (Player.wood < need) return false; Player.wood -= need; return true; }
     if (item === 'planks') { if (Player.planks < need) return false; Player.planks -= need; return true; }
-    if (item === 'saplings') { if (Player.saplings < need) return false; Player.saplings -= need; return true; }
+    if (item === 'acorns') { if (Player.acorns < need) return false; Player.acorns -= need; return true; }
     if (item.indexOf('seed:') === 0) {
       const c = item.slice(5), cur = Player.seeds[c] || 0;
       if (cur < need) return false;
@@ -202,7 +232,7 @@ const Quest = {
     if (item === 'money') return Player.money;
     if (item === 'wood') return Player.wood;
     if (item === 'planks') return Player.planks;
-    if (item === 'saplings') return Player.saplings;
+    if (item === 'acorns') return Player.acorns;
     if (item.indexOf('seed:') === 0) return Player.seeds[item.slice(5)] || 0;
     if (item.indexOf('crop:') === 0) return Player.inventory[item.slice(5)] || 0;
     return 0;
@@ -213,7 +243,7 @@ const Quest = {
     if (item === 'money') return '金锭';
     if (item === 'wood') return '木头';
     if (item === 'planks') return '木板';
-    if (item === 'saplings') return '树苗';
+    if (item === 'acorns') return '橡果';
     if (item.indexOf('seed:') === 0) { const d = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[item.slice(5)] : null; return d ? (d.name + '种子') : '种子'; }
     if (item.indexOf('crop:') === 0) { const d = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[item.slice(5)] : null; return d ? d.name : '作物'; }
     return item;

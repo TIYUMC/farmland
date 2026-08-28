@@ -171,12 +171,14 @@ body {
 }
 .tool-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); transform: translateY(-2px); }
 .tool-btn:active { transform: scale(0.93); }
+/* ⚠ 选中态不再给工具按钮加 .active（避免与底部快捷栏高亮形成第二个高亮框），
+   本规则现无 JS 添加该类，属待清理的死样式。 */
 .tool-btn.active {
   border-color: var(--accent);
   color: var(--accent);
   background: rgba(226,183,20,0.12);
 }
-/* 调试快进开启：仅用图标发光提示，不加选中边框，避免与「手中物品」框形成第二个高亮框 */
+/* 调试快进开启：仅用图标发光提示，不加选中边框（选中态统一由底部快捷栏高亮表达） */
 .tool-btn.debug-on { color: var(--accent); }
 .tool-btn.debug-on .tool-icon { filter: drop-shadow(0 0 6px #ffd54a); }
 .tool-icon { font-size: 20px; line-height: 1; position: relative; }
@@ -209,8 +211,8 @@ body {
 }
 #season-jump:focus { outline: none; border-color: var(--accent); }
 
-/* 手持物品槽：显示玩家当前「手里拿着」的工具/种子；空手时仅留一个空格子、不高亮 */
-/* 固定宽高，避免空手时内容塌陷导致边框收成椭圆/胶囊形 */
+/* ⚠ 手持物品槽 (#held-slot) 已移除：当前选中的工具/种子改由「底部快捷栏」高亮表达（见 #bottom-hotbar）。
+   下面这组 #held-slot 规则是待清理的死样式，暂无任何 DOM 与其对应。 */
 #held-slot {
   min-width: 64px;
   width: 64px;
@@ -550,21 +552,12 @@ body {
   margin: 4px 0;
 }
 
-/* ===== 背包左侧操作列：商店 / 睡觉 / 调试 / 任务（竖排，贴在背包左边外侧，避免 GUI 顶部拥挤） ===== */
-#inv-topbar {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  transform: translate(calc(-100% - 10px), -50%);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: 5;
-}
-#inv-topbar .tool-btn { min-width: 52px; padding: 3px 8px; }
-#inv-topbar .tool-icon-img { width: 24px; height: 24px; }
-/* 商店/睡觉已移入背包；调试按钮移到 HUD 上栏（#btn-inv-debug）。底部工具栏三按钮 DOM 保留并隐藏，避免 main.js 绑定失效 */
-#btn-shop, #btn-sleep, #btn-debug { display: none; }
+/* ===== 底部工具栏历史占位按钮：DOM 保留但隐藏，避免 main.js 绑定取不到节点 =====
+   注：原「背包左侧操作列」(#inv-topbar，含商店/睡觉/调试/任务) 已移除，
+   商店 / 任务 现位于主页面底部工具栏（#btn-shop / #btn-quest）。 */
+/* 商店 / 任务 入口已回到主页面底部工具栏（#btn-shop / #btn-quest），背包内不再放这两个按钮。
+   #btn-sleep / #btn-debug 仍是历史占位 DOM，保持隐藏避免 main.js 绑定取不到节点报错。 */
+#btn-sleep, #btn-debug { display: none; }
 #hud-bar .debug-cluster { margin-left: auto; }
 
 /* MC 2×2 合成格 + 输出格：按 inventory.png 纹理像素比例绝对定位，贴到纹理格子上
@@ -907,8 +900,14 @@ body {
 }
 #title-content {
   position: relative;
-  z-index: 1;
+  z-index: 10;
   text-align: center;
+}
+#title-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 #title-logo {
   font-family: 'Press Start 2P', monospace;
@@ -1025,7 +1024,7 @@ body {
   100% { opacity: 1; transform: none; }
 }
 
-/* 工具按钮选中脉冲 */
+/* 工具按钮选中脉冲 —— ⚠ 随 .tool-btn.active 一并成为死样式（无 JS 添加该类），待清理 */
 @keyframes toolPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(226,183,20,0.5); }
   50%       { box-shadow: 0 0 12px 4px rgba(226,183,20,0.25); }
@@ -1034,7 +1033,7 @@ body {
   animation: toolPulse 1.6s ease-in-out infinite;
 }
 
-/* 手持槽脉冲（选择物品时） */
+/* ⚠ 手持槽脉冲：#held-slot 已移除，.held-slot 无对应 DOM，整段待清理 */
 @keyframes heldPulse {
   0%, 100% { border-color: rgba(226,183,20,0.4); }
   50%       { border-color: rgba(226,183,20,0.9); box-shadow: 0 0 10px rgba(226,183,20,0.3); }
@@ -1153,5 +1152,140 @@ body {
   font-weight: bold;
   text-shadow: 1px 1px 0 #000;
   pointer-events: none;
+}
+
+/* ============================================================
+   移动端横屏适配
+   ------------------------------------------------------------
+   横屏手机高度极其紧张（典型 375~430px），而 HUD 与底部工具栏
+   是纯桌面尺寸写的，不压缩会把 game-area 挤到只剩 250px 左右。
+   这里统一压扁上下两条，把省下的高度让给画布（cellSize 由
+   ui.js _resize 按可用高度推算，高度越大格子越大）。
+   ============================================================ */
+@media (orientation: landscape) and (max-height: 560px) {
+
+  /* ── 整体改为「左右侧栏 + 中间画布」的真·横屏排布 ──
+     上下堆叠时画布只能按高度算格子，宽屏两侧全浪费、画面看着像竖屏。
+     把 HUD 挪到左、工具栏挪到右后，game-area 能吃满整个高度。 */
+  #game-container {
+    flex-direction: row;
+    align-items: stretch;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* ── HUD：左侧竖排 ── */
+  #hud-bar {
+    width: 92px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 6px 5px;
+    gap: 7px;
+    font-size: 11px;
+    flex-shrink: 0;
+    border-bottom: none;
+    border-right: 2px solid var(--border);
+  }
+  .hud-item { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .hud-label { font-size: 10px; }
+  .hud-label img { width: 14px; height: 14px; }
+  #hud-datetime { font-size: 10px; line-height: 1.25; word-break: break-all; }
+  #hud-stamina { font-size: 10px; }
+  #stamina-bar-bg { width: 100%; height: 8px; border-radius: 4px; }
+  #season-jump { padding: 1px 2px; font-size: 9px; width: 100%; }
+  #hud-bar .debug-cluster { margin-left: 0; align-items: stretch; }
+
+  /* ── 画布区占满剩余空间 ── */
+  #game-area { flex: 1 1 auto; min-width: 0; }
+
+  /* ── 工具栏：右侧竖排 ── */
+  #toolbar {
+    width: 100px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 5px 4px;
+    gap: 5px;
+    flex-shrink: 0;
+    border-top: none;
+    border-left: 2px solid var(--border);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .tool-btn {
+    padding: 3px 4px;
+    min-width: 0;
+    width: 100%;
+    border-radius: 6px;
+  }
+  #toolbar .tool-name { display: none; }   /* 侧栏窄，只留图标 */
+  #toolbar .tool-icon-img { width: 22px; height: 22px; }
+  #toolbar .tool-emoji { font-size: 16px; }
+
+  /* ── 快捷栏：9 格改 2 列网格（5 行），否则竖排会超出屏高 ── */
+  #bottom-hotbar {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3px;
+    padding: 0;
+    background: transparent;
+  }
+  #bottom-hotbar .hotbar-cell { width: 100%; height: 36px; }
+  #bottom-hotbar .item-icon { width: 24px; height: 24px; }
+  #bottom-hotbar .item-count { font-size: 8px; }
+
+  /* ── 状态提示 / Toast 缩小，避免横屏下挡住画面 ── */
+  #status-message { font-size: 12px; padding: 4px 12px; }
+  #achievement-toast { transform: scale(0.85); }
+}
+
+/* 竖屏旋转提示已按用户要求移除。
+   新策略：不拦任何方向、不加任何遮挡层，画布一律按可用空间自适应缩小
+   （见 ui.js _resize），竖屏与横屏都能直接进游戏。 */
+
+/* ============================================================
+   窄屏适配（手机竖屏）
+   宽度仅 360~430px，HUD 里的「时间 + 体力条 + 调试按钮 + 跳季下拉」
+   按桌面尺寸横排会挤爆屏幕（white-space:nowrap 又不换行），
+   故缩小各部件并允许 HUD 换行；工具栏与快捷栏同步收窄。
+   与上面的横屏断点互斥：竖屏走 max-width，横屏走 max-height。
+   ============================================================ */
+@media (max-width: 560px) {
+
+  /* HUD 允许换行，内容再多也不会横向溢出 */
+  #hud-bar {
+    padding: 4px 8px;
+    gap: 6px 10px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .hud-item { gap: 3px; }
+  .hud-label { font-size: 11px; }
+  .hud-label img { width: 14px; height: 14px; }
+  #hud-datetime, #hud-stamina { font-size: 11px; }
+  #stamina-bar-bg { width: 80px; height: 10px; border-radius: 5px; }
+  #season-jump { padding: 1px 4px; font-size: 10px; }
+  #hud-bar .debug-cluster { margin-left: 0; }
+
+  /* 工具栏收窄（本身已有 overflow-x:auto，这里只是让按钮别撑太宽） */
+  #toolbar { padding: 4px 6px; gap: 4px; }
+  .tool-btn { min-width: 44px; padding: 3px 6px; }
+  #toolbar .tool-icon-img { width: 24px; height: 24px; }
+
+  /* 快捷栏格子略缩，保证 9 格 + 按钮能横排放下 */
+  #bottom-hotbar { padding: 3px 4px; gap: 1px; }
+  #bottom-hotbar .hotbar-cell { width: 38px; height: 38px; }
+  #bottom-hotbar .item-icon { width: 26px; height: 26px; }
+
+  /* 状态提示与 Toast 缩小，避免挡住画面 */
+  #status-message { font-size: 12px; padding: 5px 12px; }
+  #achievement-toast { transform: scale(0.85); }
+
+  /* 刘海屏安全区 */
+  #game-container {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }
 

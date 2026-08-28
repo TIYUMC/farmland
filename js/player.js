@@ -1,12 +1,12 @@
 /**
  * player.js — 玩家管理
- * 职责：体力、金钱、背包（收获物/种子）、资源（木头/树苗）、工具选择。
+ * 职责：体力、金钱、背包（收获物/种子）、资源（木头/木板/橡果）、工具选择。
  *
  * ── 结构导航 ──
  *   ① 初始化       init
  *   ② 体力         spendStamina / regenStamina / refundStamina / restoreStamina
  *   ③ 金钱         addMoney / spendMoney
- *   ④ 资源(木/苗)  addWood / addSaplings / hasSapling / useSapling
+ *   ④ 资源(木/板/果) addWood / addPlanks / addAcorns / hasAcorn / useAcorn
  *   ⑤ 工具         ownsTool / selectTool
  *   ⑥ 收获物背包   addToInventory / clearInventory / getInventorySellValue / getInventoryCount
  *   ⑦ 种子         addSeeds / hasSeed / useSeed / getSeedCount
@@ -16,7 +16,7 @@ const Player = {
   maxStamina: DATA.PLAYER_START.maxStamina,
   money: DATA.PLAYER_START.money,
 
-  // 资源：木头（砍树获得，暂只产不出；为后续建造/经济闭环铺路）
+  // 资源：木头（砍树获得；可在背包 2×2 合成格制成木板，也是任务回收物）
   wood: 0,
 
   // 资源：木板（原木合成获得，1 原木 → 4 木板）
@@ -25,8 +25,8 @@ const Player = {
   // 任务书：已完成任务集合（刷新即重置，与游戏整体无存档一致）
   questsDone: {},
 
-  // 资源：树苗（砍树掉落 1~3 个，可在树场种回；形成「砍树→得树苗→种树场→再砍」循环）
-  saplings: 0,
+  // 资源：橡果（砍树掉落 1~3 个，可在树场种回；形成「砍树→得橡果→种树场→再砍」循环）
+  acorns: 0,
 
   // 已拥有工具：木斧头需先在商店购买（20 金锭 + 5 小麦），未购买则无法装备/砍树。
   // 注意：锄头/水桶开局即拥有，不在此登记。
@@ -50,7 +50,7 @@ const Player = {
     this.money = DATA.PLAYER_START.money;
     this.wood = 0;
     this.planks = 0; // 开局无木板（需砍树得原木后分解）
-    this.saplings = 0; // 开局无树苗（需砍树获得）
+    this.acorns = 0; // 开局无橡果（需砍树获得）
     this.ownedTools = { axe: false }; // 木斧头开局不拥有，需商店购买
     this.inventory = {};
     this.seeds = {}; // 开局不送种子（仅锄头+水桶；种子由教程 tut1 奖励发放）
@@ -93,9 +93,9 @@ const Player = {
   _slotFromIdentity(id) {
     if (!id) return null;
     if (id.kind === 'tool') {
-      const map = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, sapling: { key: 'oak_sapling', label: '树苗' } };
+      const map = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, acorn: { key: 'acorn', label: '橡果' } };
       const m = map[id.toolId] || { key: '', label: id.toolId };
-      return { kind: 'tool', toolId: id.toolId, key: m.key, label: m.label, count: id.toolId === 'sapling' ? (this.saplings || 0) : 1 };
+      return { kind: 'tool', toolId: id.toolId, key: m.key, label: m.label, count: id.toolId === 'acorn' ? (this.acorns || 0) : 1 };
     }
     if (id.kind === 'seed') {
       const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[id.seedId] : null;
@@ -136,12 +136,12 @@ const Player = {
     for (let i = 0; i < 9; i++) inv[27 + i] = this._slotFromIdentity(this._hotbarSlots[i]);
     // 主栏：未进快捷栏的工具/种子 + 所有堆叠资源
     const main = [];
-    const toolMap = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, sapling: { key: 'oak_sapling', label: '树苗' } };
-    for (const t of ['hoe', 'water', 'axe', 'sapling']) {
+    const toolMap = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, acorn: { key: 'acorn', label: '橡果' } };
+    for (const t of ['hoe', 'water', 'axe', 'acorn']) {
       if (t === 'axe' && !this.ownsTool('axe')) continue;
-      if (t === 'sapling' && !(this.saplings > 0)) continue;
+      if (t === 'acorn' && !(this.acorns > 0)) continue;
       if (this._hbHasTool(t)) continue;
-      main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: t === 'sapling' ? (this.saplings || 0) : 1 });
+      main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: t === 'acorn' ? (this.acorns || 0) : 1 });
     }
     for (const sid of Object.keys(this.seeds || {})) {
       const c = this.seeds[sid]; if (!c || c <= 0) continue;
@@ -216,7 +216,7 @@ const Player = {
   },
 
   // ─────────────────────────────────────────────
-  // ④ 资源（木头/树苗）
+  // ④ 资源（木头 / 木板 / 橡果）
   // ─────────────────────────────────────────────
   /** 加木头（砍树获得） */
   addWood(amount) {
@@ -224,9 +224,9 @@ const Player = {
     if (typeof Quest !== 'undefined') Quest.trigger('wood', amount); // 任务书：物资储备/林间建设者
   },
 
-  /** 加树苗（砍树掉落） */
-  addSaplings(amount) {
-    this.saplings += (amount || 0);
+  /** 加橡果（砍树掉落） */
+  addAcorns(amount) {
+    this.acorns += (amount || 0);
   },
 
   /** 加木板（原木合成获得，1 原木 → 4 木板） */
@@ -234,15 +234,15 @@ const Player = {
     this.planks += (amount || 0);
   },
 
-  /** 是否还有树苗可种 */
-  hasSapling() {
-    return this.saplings > 0;
+  /** 是否还有橡果可种 */
+  hasAcorn() {
+    return this.acorns > 0;
   },
 
-  /** 消耗 1 个树苗（种植时调用） */
-  useSapling() {
-    if (this.saplings <= 0) return false;
-    this.saplings -= 1;
+  /** 消耗 1 个橡果（种植时调用） */
+  useAcorn() {
+    if (this.acorns <= 0) return false;
+    this.acorns -= 1;
     return true;
   },
 

@@ -23,6 +23,7 @@
     console.log('[init] 工具栏图标设置完成');
     UI._renderBottomHotbar();
 
+
     // 连接引擎回调
     Engine.onHourChange = (hour, minute) => {
       UI.render();
@@ -91,12 +92,13 @@
 
     // 背包按钮快捷
     _addInventoryButton();
-    // 商店按钮：开关村民商店（B/S 亦可开关，点面板外或 Esc 关闭）
+    // 商店按钮：开关村民商店（S 键开；商店开着时 B 键关；点面板外或 Esc 亦可关）
     document.getElementById('btn-shop').addEventListener('click', () => {
       if (UI._shopOpen) UI.closeShop(); else UI.openShop();
     });
 
-    // 睡觉按钮：主动睡觉（晚上 6 点之后，由 Engine.sleep 内部校验）
+    // ⚠ 睡觉按钮 (#btn-sleep) 的 DOM 已移除，睡觉现由 Z 键触发；绑定保留备用
+    //   （合法性「晚 6 点后」由 Engine.sleep 内部校验）
     const sleepBtn = document.getElementById('btn-sleep');
     if (sleepBtn) sleepBtn.addEventListener('click', () => Engine.sleep());
 
@@ -116,12 +118,8 @@
       });
     }
 
-    // 背包内顶部操作行：商店 / 睡觉 / 调试（按钮已移入背包 GUI，逻辑同工具栏原按钮）
-    const invShop = document.getElementById('btn-inv-shop');
-    if (invShop) invShop.addEventListener('click', () => {
-      UI.closeInventory();                 // 关背包再开商店，避免两个 overlay 叠加
-      if (UI._shopOpen) UI.closeShop(); else UI.openShop();
-    });
+    // ⚠ 下面 #btn-inv-sleep 的 DOM 已移除（背包内不再放睡觉按钮），绑定保留备用。
+    //    商店 / 任务 入口也已移到主页面底部工具栏（见 #btn-shop / #btn-quest），背包内不再提供。
     const invSleep = document.getElementById('btn-inv-sleep');
     if (invSleep) invSleep.addEventListener('click', () => {
       UI.closeInventory();                 // 关背包后睡觉（结算进入第二天）
@@ -144,18 +142,89 @@
         _jumpToSeason(v);
       });
     }
-    // 任务书入口：背包内紫色书按钮（调试右边），点开/关任务书；关闭后回到背包
-    const invBook = document.getElementById('btn-inv-book');
-    if (invBook) invBook.addEventListener('click', () => UI.openQuest());
+    // 任务书入口：底部工具栏紫色书按钮（商店右边），点开/关任务书
+    const questBtn = document.getElementById('btn-quest');
+    if (questBtn) questBtn.addEventListener('click', () => UI.openQuest());
 
     // 标题界面按钮绑定
     const btnNewGame = document.getElementById('btn-new-game');
     if (btnNewGame) btnNewGame.addEventListener('click', _startNewGame);
     const btnContinue = document.getElementById('btn-continue');
     if (btnContinue) btnContinue.addEventListener('click', _continueGame);
+    // 添加切换动画
+    _addTitleTransition();
   }
 
   // ===== 标题界面控制 =====
+  var _titleParticleRAF = null;
+  var _titleParticleSystem = null;
+  var _titleCanvas = null;
+  var _titleCtx = null;
+
+  function _startTitleParticles() {
+    console.log('[title] start particles check: UI=', typeof UI, 'Juice=', typeof Juice);
+    if (!UI || !UI.init || typeof Juice === 'undefined') {
+      console.warn('[title] missing dependencies');
+      return;
+    }
+    var el = document.getElementById('title-particles');
+    console.log('[title] canvas element:', el);
+    if (!el) return;
+    if (_titleParticleRAF) { cancelAnimationFrame(_titleParticleRAF); _titleParticleRAF = null; }
+    _titleCanvas = el;
+    _titleCanvas.width = window.innerWidth;
+    _titleCanvas.height = window.innerHeight;
+    _titleCtx = _titleCanvas.getContext('2d');
+    console.log('[title] canvas size:', _titleCanvas.width, 'x', _titleCanvas.height);
+    _titleParticleSystem = new Juice.ParticleSystem();
+    console.log('[title] particle system created');
+    var lastSpawnTime = 0;
+    var isHidden = false;
+    // 页面不可见时暂停动画
+    document.addEventListener('visibilitychange', function() {
+      isHidden = document.hidden;
+      if (isHidden && _titleParticleRAF) {
+        cancelAnimationFrame(_titleParticleRAF);
+        _titleParticleRAF = null;
+      }
+    });
+    function spawnLoop(ts) {
+      if (!_titleParticleSystem || isHidden) return;
+      if (ts - lastSpawnTime < 400) return; // 每400ms生成一次
+      lastSpawnTime = ts;
+      // 在整个canvas宽度范围内随机分布，高度在标题内容区域
+      var cx = Math.random() * _titleCanvas.width;
+      var cy = _titleCanvas.height * 0.5 + Math.random() * _titleCanvas.height * 0.3;
+      _titleParticleSystem.spawn(cx, cy, {
+        imgKeys: ['generic_0','generic_1','generic_2','generic_3','generic_4','generic_5','generic_6','generic_7'],
+        imgSize: 12,
+        count: 2, speed: 50, gravity: -25, spread: Math.PI * 1.8, spawnRadius: 15,
+      });
+    }
+    var lastTime = performance.now();
+    function loop(ts) {
+      var dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+      _titleCtx.clearRect(0, 0, _titleCanvas.width, _titleCanvas.height);
+      if (_titleParticleSystem) {
+        spawnLoop(ts);
+        _titleParticleSystem.update(dt);
+        _titleParticleSystem.draw(_titleCtx);
+      }
+      // 调试：显示canvas尺寸
+      // console.log('[title] canvas size:', _titleCanvas.width, 'x', _titleCanvas.height, 'particles:', _titleParticleSystem.list.length);
+      _titleParticleRAF = requestAnimationFrame(loop);
+    }
+    _titleParticleRAF = requestAnimationFrame(loop);
+  }
+
+  function _stopTitleParticles() {
+    if (_titleParticleRAF) { cancelAnimationFrame(_titleParticleRAF); _titleParticleRAF = null; }
+    _titleParticleSystem = null;
+    _titleCanvas = null;
+    _titleCtx = null;
+  }
+
   function _showTitle() {
     var ts = document.getElementById('title-screen');
     if (!ts) return;
@@ -163,12 +232,9 @@
     var contBtn = document.getElementById('btn-continue');
     if (contBtn) contBtn.style.display = has ? '' : 'none';
     ts.className = 'overlay-visible';
-    // 字母逐个出现动画
     _animateTitleLetters();
-    // 按钮弹性入场（延迟错开）
     _animateButtonsIn();
-    // 浮尘粒子
-    _spawnParticles(12);
+    _startTitleParticles();
   }
 
   /** 标题字母逐个弹出（MC 风格） */
@@ -229,24 +295,45 @@
     setTimeout(function() { el.remove(); }, 700);
   }
 
+  var _titleTransitionOut = null;
+
+  function _addTitleTransition() {
+    var ts = document.getElementById('title-screen');
+    if (!ts) return;
+    ts.style.transition = 'opacity 0.5s ease-in';
+    _titleTransitionOut = function(cb) {
+      ts.style.opacity = '0';
+      setTimeout(function() {
+        ts.style.opacity = '';
+        ts.style.transition = '';
+        if (cb) cb();
+      }, 500);
+    };
+  }
+
   function _hideTitle() {
     var ts = document.getElementById('title-screen');
     if (ts) ts.className = 'overlay-hidden';
+    _stopTitleParticles();
   }
   function _startNewGame() {
-    _hideTitle();
-    Farm.init();
-    TreeFarm.init();
-    Player.init();
-    Engine.start();
-    UI.render();
-    UI._renderBottomHotbar();
+    _titleTransitionOut(function() {
+      _hideTitle();
+      Farm.init();
+      TreeFarm.init();
+      Player.init();
+      Engine.start();
+      UI.render();
+      UI._renderBottomHotbar();
+    });
   }
   function _continueGame() {
     if (!SaveGame.hasSave()) return;
-    _hideTitle();
-    SaveGame.load();
-    UI._renderBottomHotbar();
+    _titleTransitionOut(function() {
+      _hideTitle();
+      SaveGame.load();
+      UI._renderBottomHotbar();
+    });
   }
 
   /**
@@ -256,10 +343,9 @@
     _setBtnIcon('btn-shop',     'shop');
     _setBtnIcon('btn-sleep',    'red_bed');
     _setBtnIcon('btn-debug',    'command_block');
-    _setBtnIcon('btn-inv-shop', 'shop');
+    _setBtnIcon('btn-quest',    'book_purple');
     _setBtnIcon('btn-inv-sleep','red_bed');
     _setBtnIcon('btn-inv-debug','command_block');
-    _setBtnIcon('btn-inv-book', 'book_purple');
     _setBtnIcon('btn-save',     'chest');
     _setHudIcon('hud-ico-stamina', 'food_full');
     _setHudIcon('hud-ico-time',    'time');

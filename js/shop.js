@@ -635,6 +635,13 @@ UI._onShopClick = function(x, y) {
   if (L.resultSlot && this._hitRect(x, y, L.resultSlot)) {
     const t = this._trades.find(z => z.id === this._shopSel);
     if (t) {
+      // 调试模式（Engine.debugFast）：直接成交，无视「先拖材料」限制 —— 工具与商品通用。
+      // 必须提在最前面：否则非工具商品会卡在下面「请先把原材料拖入输入框」提前 return，
+      // 根本走不到 _executeTrade 里的 debugFast 快捷分支。
+      if (typeof Engine !== 'undefined' && Engine.debugFast) {
+        this._executeTrade(t);
+        return;
+      }
       // 工具（如木斧头）：须先把金锭+材料拖入输入框（_toolParts 齐全）才能点结果槽成交
       if (t.kind === 'tool') {
         if (this._toolReady(t)) {

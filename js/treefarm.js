@@ -7,7 +7,7 @@
  * ── 结构导航 ──
  *   ① 初始化  init
  *   ② 查询    _inBounds / getTreeAt
- *   ③ 交互    chop / plantSapling
+ *   ③ 交互    chop / plantAcorn
  *   ④ 每日演化 dailyGrow
  */
 const TreeFarm = {
@@ -15,7 +15,7 @@ const TreeFarm = {
   ROWS: DATA.FARM.ROWS,
 
   // trees[row][col] = 资源树实体：null=无树；{ stage:'grown'|'sapling', days }。
-  // grown=可砍；砍后直接消失(null)，不再有树桩阶段；sapling=种下的树苗，按 TREE.saplingGrowDays 长成。
+  // grown=可砍；砍后直接消失(null)，不再有树桩阶段；sapling=种下的橡果长出的树苗，按 TREE.acornGrowDays 长成。
   trees: [],
 
   // rooted[row][col] = true 表示该格被锄头翻过、地表明为「缠根泥土」(rooted_dirt)。
@@ -85,14 +85,14 @@ const TreeFarm = {
 
   /** 某格 8 邻格内是否已有树（供「树旁生树降概率」判定用）。 */
 
-  /** 越界或已有树 → 返回错误对象，否则 null。收口 plantSapling/till 的「越界 + 已有树」双守卫（两处理由一致）。 */
+  /** 越界或已有树 → 返回错误对象，否则 null。收口 plantAcorn/till 的「越界 + 已有树」双守卫（两处理由一致）。 */
   _requireEmptyCell(row, col) {
     if (!this._inBounds(row, col)) return { ok: false, reason: 'out_of_bounds' };
     if (this.getTreeAt(row, col)) return { ok: false, reason: '这里已经有树了' };
     return null;
   },
 
-  /** 含端点的随机整数 [min, max]（min + floor(random×(max-min+1))）。收口 chop 的 wood/saplings 产量计算（两处同形）。 */
+  /** 含端点的随机整数 [min, max]（min + floor(random×(max-min+1))）。收口 chop 的 wood/acorns 产量计算（两处同形）。 */
   _randInt(min, max) {
     return min + Math.floor(Math.random() * (max - min + 1));
   },
@@ -128,8 +128,8 @@ const TreeFarm = {
     if (typeof UI !== 'undefined' && UI._treeFrost) UI._treeFrost[r * 1000 + c] = 0;
   },
 
-  /** 砍树：砍倒大树掉落木头/树苗（树场专用），返回 { ok, wood, saplings } 或 { ok:false, reason }。
-   *  wood 取自 DATA.TREE；saplings 为 1~3 个「树苗」(DATA.TREE.saplingYield*)，可种回树场形成循环。 */
+  /** 砍树：砍倒大树掉落木头/橡果（树场专用），返回 { ok, wood, acorns } 或 { ok:false, reason }。
+   *  wood 取自 DATA.TREE；acorns 为 1~3 个「橡果」(DATA.TREE.acornYield*)，可种回树场形成循环。 */
   chop(row, col) {
     if (!this._inBounds(row, col)) return { ok: false, reason: 'out_of_bounds' };
     const t = this.getTreeAt(row, col);
@@ -137,16 +137,16 @@ const TreeFarm = {
     if (t.stage !== 'grown') return { ok: false, reason: '树还没长好' };
     const T = DATA.TREE;
     const wood = this._randInt(T.woodYieldMin, T.woodYieldMax);
-    const saplings = this._randInt(T.saplingYieldMin, T.saplingYieldMax);
+    const acorns = this._randInt(T.acornYieldMin, T.acornYieldMax);
     this.trees[row][col] = null;
     this._clearFrost(row, col);                // 清掉被砍树的霜白残留（新树不应继承）
     if (typeof Quest !== 'undefined') Quest.trigger('chop'); // 任务书：樵夫/伐木工会
-    return { ok: true, wood, saplings };
+    return { ok: true, wood, acorns };
   },
 
-  /** 种树苗：在空格种下一棵「树苗」(stage:'sapling')，消耗玩家 1 个树苗；长成后可与普通树一样砍。
+  /** 种橡果：在空格种下一棵橡果(sapling stage:'sapling')，消耗玩家 1 个橡果；长成后可与普通树一样砍。
    *  返回 { ok } 或 { ok:false, reason }。 */
-  plantSapling(row, col) {
+  plantAcorn(row, col) {
     const e = this._requireEmptyCell(row, col);
     if (e) return e;
     this.trees[row][col] = { stage: 'sapling', days: 0 };
@@ -188,14 +188,14 @@ const TreeFarm = {
   // ─────────────────────────────────────────────
   // ④ 每日演化
   // ─────────────────────────────────────────────
-  /** 逐日演化：① 树苗 days+1，满 saplingGrowDays 长回 grown；② 每日随机补树至 MAX_TREES（控率防刷爆/枯竭）。 */
+  /** 逐日演化：① 橡果种下后长树苗 (days+1)，满 acornGrowDays 长回 grown；② 每日随机补树至 MAX_TREES（控率防刷爆/枯竭）。 */
   dailyGrow() {
-    const sGrow = DATA.TREE.saplingGrowDays;
+    const growDays = DATA.TREE.acornGrowDays;
     let count = 0;
     this._forEachCell((t, r, c) => {
       if (t && t.stage === 'sapling') {
         t.days = (t.days || 0) + 1;
-        if (t.days >= sGrow) { this.trees[r][c] = { stage: 'grown', days: 0 }; this._clearFrost(r, c); } // 长成的树：霜白从 0 起
+        if (t.days >= growDays) { this.trees[r][c] = { stage: 'grown', days: 0 }; this._clearFrost(r, c); } // 长成的树：霜白从 0 起
       }
       if (this.trees[r][c]) count++;
     });

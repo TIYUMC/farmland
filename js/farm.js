@@ -482,7 +482,8 @@ function grassStep(self) {
         if (Math.random() < decay) self.grass[r][c] = 2; // 仍是草(黄)，未退化成裸土（本步仍按乘法，未改）
       } else if (prev[r][c] === 0) {
         if (self.bare[r][c]) {
-          const recoverNeighbor = hasNeighborGrassOrBlock(r, c) ? self.grassGrowAloneMult : self.grassGrowNeighborMult;
+          // 裸土 → 草方块：有草邻居时生长慢(竞争抑制)，孤立时生长快（参考第497行同类写法）
+          const recoverNeighbor = hasNeighborGrassOrBlock(r, c) ? self.grassGrowNeighborMult : self.grassGrowAloneMult;
           if (Math.random() < growBase * recoverNeighbor) {
             self.bare[r][c] = false; // 土 → 草方块（按长草概率恢复底纹，grass 仍为 0）
           }

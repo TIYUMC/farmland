@@ -4,7 +4,7 @@
  *
  * 保存范围：
  *   Engine.year / season / day / hour / minute
- *   Player.stamina / money / inventory(seeds) / seeds / wood / planks / saplings
+ *   Player.stamina / money / inventory(seeds) / seeds / wood / planks / acorns
  *         / ownedTools / questsDone / _hotbarSlots / _hotbarSel
  *   Farm.grid / grass / bare / dirt / flowers
  *   TreeFarm.trees / rooted / grass / bare / dirt
@@ -14,7 +14,8 @@
  *   2. 玩家手动点击「存档」按钮
  *
  * 手动读档：
- *   点击「读档」按钮后，若本地有存档则弹确认框；确认后覆盖当前进度。
+ *   主页面已无「读档」按钮（已移除）；改在标题页点「继续游戏」(#btn-continue) 直接读档，
+ *   无二次确认。该按钮只在 hasSave() 为真时显示，见 main.js _showTitle。
  */
 
 const SaveGame = {
@@ -83,7 +84,7 @@ const SaveGame = {
     return !!window.localStorage.getItem(this.STORAGE_KEY);
   },
 
-  /** 返回存档摘要（供 UI 显示在读档确认弹窗中） */
+  /** 返回存档摘要（"春3日 第1年"）。原供读档确认弹窗使用，该弹窗已移除，现无调用点，保留备用 */
   getSummary() {
     const raw = window.localStorage.getItem(this.STORAGE_KEY);
     if (!raw) return null;
@@ -119,7 +120,7 @@ const SaveGame = {
         seeds: Player?.seeds ?? {},
         wood: Player?.wood ?? 0,
         planks: Player?.planks ?? 0,
-        saplings: Player?.saplings ?? 0,
+        acorns: Player?.acorns ?? 0,
         ownedTools: Player?.ownedTools ?? {},
         questsDone: Player?.questsDone ?? {},
         _hotbarSlots: Player?._hotbarSlots ?? null,
@@ -167,7 +168,7 @@ const SaveGame = {
       Player.seeds      = p.seeds     ?? {};
       Player.wood       = p.wood      ?? 0;
       Player.planks     = p.planks    ?? 0;
-      Player.saplings   = p.saplings  ?? 0;
+      Player.acorns      = p.acorns      ?? 0;
       Player.ownedTools = p.ownedTools ?? {};
       Player.questsDone = p.questsDone ?? {};
       Player._hotbarSlots = p._hotbarSlots ?? null;

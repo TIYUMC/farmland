@@ -24,13 +24,17 @@
 
  *  ② 主渲染/缓存：render · markFarmDirty · _ensureFarmCache · _rebuildFarmCache
 
+ *     └ ② 区体量很大，内部另含三个带独立分隔线注释的子系统（文件内顺序：积雪 → 秋日落叶 → 场景切换）：
+
+ *         积雪系统（16×16 像素格逐步累积铺满）· 秋日落叶系统 · 场景切换 toggleScene + 画布左上角导航箭头
+
  *  ③ 动态呼吸层：_drawWaterOverlay · _drawFarmlandOverlay · _drawBreathingBorder · _drawCornerBadge
 
  *  ④ 静态农场层：_renderStaticScene · _drawGrassGroundCell · _drawBareSoil · _drawCropCell · _drawTreeEntity · _renderTreeFarmScene
 
  *  ⑤ 动画/HUD：_startAnimLoop · _updateHUD
 
- *  ⑥ 工具栏/手持槽：_onToolClick · _updateHeldSlot · _drawEmojiCrop
+ *  ⑥ 工具栏：_onToolClick · _drawEmojiCrop（_updateHeldSlot 为空实现：手持槽已移除，选中态走底部快捷栏）
 
  *  ⑦ 画布输入：_onMouseMove
 
@@ -42,6 +46,10 @@
 
  *  ⑩ 背包（已拆至 inventory.js）：openInventory · closeInventory · renderInventory · _makeSlot · _seedIconKey
 
+ *                                 · _renderBottomHotbar（底部常驻 MC 快捷栏）· _bindBottomHotbar
+
+ *                                 · _applyHotbarSlot / _invSyncSelToTool（快捷栏选中 ↔ 工具栏装备联动）
+
  *  ⑪ 商店系统（已拆至 shop.js）：openShop · closeShop · _buildTrades · _executeTrade · _drawShopOverlay
 
  *            · _onShopClick · _changeShopSel · _onShopWheel · _onShopBarDown
@@ -49,6 +57,10 @@
  *            · _onShopBarMove · _onShopMove
 
  *  ⑫ 每日结算：showFullSummary · closeSummary
+
+ *  ⑬ 任务书（进度树，文件末段）：openQuest · closeQuest · _renderQuest · _renderQuestTabs · showAchievement
+
+ *                                入口为底部工具栏 #btn-quest；完成判定与领取逻辑在 quest.js（Quest.isDone / Quest.claim）
 
  * ───────────────────────────────────────────────────────────────────────────
 
@@ -410,6 +422,13 @@ const UI = {
 
     window.addEventListener('resize', () => this._resize());
 
+    // 转屏：部分移动浏览器的 resize 在旋屏后有延迟/尺寸未稳，补一次延时重算，
+    // 否则横竖屏切换后画布会停留在旧尺寸（表现为画面偏移或显示不全）。
+    window.addEventListener('orientationchange', () => {
+      this._resize();
+      setTimeout(() => this._resize(), 300);
+    });
+
 
 
     // 事件绑定
@@ -446,9 +465,9 @@ const UI = {
 
 
 
-    // 工具栏按钮只绑定点击；选中态由右侧「手中物品」框统一高亮显示，
+    // 工具栏按钮只绑定点击；选中态由「底部快捷栏」统一高亮显示（见 _invSyncSelToTool），
 
-    // 这里不再给任何工具按钮加 .active，避免与手持框形成第二个高亮框。
+    // 这里不再给任何工具按钮加 .active，避免与快捷栏形成第二个高亮框。
 
     document.querySelectorAll('.tool-btn').forEach(btn => {
 
@@ -563,7 +582,7 @@ const UI = {
 
 
 
-    // 初始「手中物品」显示
+    // 初始化选中态（_updateHeldSlot 已是空实现，保留调用以免各处判空）
 
     this._updateHeldSlot();
 
@@ -615,9 +634,16 @@ const UI = {
     const hud = document.getElementById('hud-bar');
     const toolbar = document.getElementById('toolbar');
 
-    // toolbar 已包含 hotbar，只减去一次
-    const availH = window.innerHeight - hud.offsetHeight - toolbar.offsetHeight - 8;
-    const availW = window.innerWidth;
+    // 直接量 game-area 的实际可用空间，而不是拿 innerWidth/innerHeight 自己去减：
+    //   桌面 / 竖屏：HUD 与工具栏上下堆叠，game-area 的高度已是扣除后的剩余；
+    //   手机横屏：两者移到左右侧栏，此时该扣的是「宽度」而非高度。
+    // 若沿用旧的减法，侧栏布局下 availW 会错算成整个屏幕宽，画布将溢出 game-area。
+    const availW = gameArea.clientWidth || window.innerWidth;
+    let availH = gameArea.clientHeight;
+    if (!availH) {
+      // 布局尚未稳定时的兜底（toolbar 已包含 hotbar，只减一次）
+      availH = window.innerHeight - hud.offsetHeight - toolbar.offsetHeight - 8;
+    }
 
 
 
@@ -627,9 +653,20 @@ const UI = {
 
     const idealSizeByW = Math.floor(availW / DATA.FARM.COLS);
 
-    this.cellSize = Math.min(idealSizeByH, idealSizeByW, 85);
+    // 小屏(手机)放宽下限：桌面 32 的保底会在手机上反向把画布撑出容器 —— 这正是「显示不全」的根因。
+    // 例：手机横屏 availH≈250 → ideal=25，若被 max(...,32) 抬成 32，画布高 320 > 250 直接溢出。
 
-    this.cellSize = Math.max(this.cellSize, 32);
+    const isSmallScreen = Math.min(window.innerWidth, window.innerHeight) <= 560;
+    const MIN_CELL = isSmallScreen ? 14 : 32;
+
+    let size = Math.min(idealSizeByH, idealSizeByW, 85);
+
+    size = Math.max(size, MIN_CELL);
+
+    // ★ 兜底之后必须再用可用空间夹一次，否则保底值会把画布顶出容器
+    size = Math.min(size, idealSizeByH, idealSizeByW);
+
+    this.cellSize = Math.max(size, 1);   // 极端窄窗保底 1px，杜绝 0 / 负值
 
 
 
@@ -2966,10 +3003,17 @@ const UI = {
       || (Farm.grid[r] && Farm.grid[r][c]);
     
     if (this.scene === 'treeFarm') {
-      // 树场：只画草和树
+      // 树场：只画草、树和缠根泥土
       const hasTree = !!(TreeFarm.trees[r] && TreeFarm.trees[r][c]);
       if (hasTree) {
         this._drawTreeEntity(ctx, x, y, cs, TreeFarm.trees[r][c]);
+        return;
+      }
+      // 锄头翻出的缠根泥土：先铺土色底 + 贴 rooted_dirt
+      if (TreeFarm.getRootedAt(r, c)) {
+        this._fillCell(ctx, x, y, cs, colors.soil);
+        this._drawPaddedAsset(ctx, 'rooted_dirt', x, y, cs, 1, true)
+          || this._fillCell(ctx, x, y, cs, colors.soil);
         return;
       }
       const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
@@ -4310,13 +4354,13 @@ const UI = {
 
     if (t.stage === 'sapling') {
 
-      // 树苗：用 oak_sapling 像素贴图绘制（用户「树苗换贴图」）；素材缺失时回退简单像素方块，不出 emoji
+      // 树苗：用 acorn 像素贴图绘制；素材缺失时回退简单像素方块，不出 emoji
 
       const pad = 4, size = cs - pad * 2;
 
       const winter = this._isWinter();
 
-      if (!ASSETS.draw(ctx, 'oak_sapling', x + pad, y + pad, size, size)) {
+      if (!ASSETS.draw(ctx, 'acorn', x + pad, y + pad, size, size)) {
 
         const cx = x + cs / 2;
 
@@ -4342,7 +4386,7 @@ const UI = {
 
         // 按该树自己的白化进度叠霜白（0=没白，1=全白）——下雪过程中逐渐盖白，不是一进冬天就白
 
-        const frost = this._winterFrosted('oak_sapling');
+        const frost = this._winterFrosted('acorn');
 
         if (frost && frost.width) {
 
@@ -4546,7 +4590,7 @@ const UI = {
 
   // ─────────────────────────────────────────────
 
-  // ⑥ 工具栏 / 手持槽
+  // ⑥ 工具栏（原「手持槽」区块已移除，见 _updateHeldSlot）
 
   // ─────────────────────────────────────────────
 
@@ -4560,9 +4604,9 @@ const UI = {
 
 
 
-    // 当前选中的工具由右侧「手中物品」框统一高亮显示，工具栏按钮本身不再加选中边框，
+    // 当前选中的工具由「底部快捷栏」高亮体现，工具栏按钮本身不再加选中边框，
 
-    // 避免同时出现两个高亮框（手持框 + 工具按钮框）。
+    // 避免同时出现两个高亮框（快捷栏 + 工具按钮）。
 
 
 
@@ -4580,7 +4624,7 @@ const UI = {
 
       Player.selectTool(tool);
 
-      const names = { hoe: '锄头 🔨', water: '水桶', axe: '斧头 🪓', sapling: '树苗 🌱' };
+      const names = { hoe: '锄头', water: '水桶', axe: '斧头', acorn: '橡果' };
 
       this.showStatus(`选择工具：${names[tool] || tool}`, 800);
 
@@ -4598,11 +4642,11 @@ const UI = {
 
 
 
-  /** 刷新底部「手中物品」显示（MC 风：显示当前选中的工具/种子） */
+  /** 原「刷新底部『手中物品』显示」——手持槽已移除，选中态改由底部快捷栏高亮表达。
+      本方法为空实现，但仍被 9 处调用（inventory.js / shop.js / ui.js / main.js），
+      保留空壳以免每处调用点都要判空。 */
 
-    _updateHeldSlot() {
-    // 手中物品栏已移除
-  },
+  _updateHeldSlot() {},
 
 
 
@@ -4990,7 +5034,7 @@ const UI = {
 
       Player.addWood(res.wood);
 
-      if (res.saplings) Player.addSaplings(res.saplings);
+      if (res.acorns) Player.addAcorns(res.acorns);
 
       this._invalidateCell(row, col);
 
@@ -5010,11 +5054,11 @@ const UI = {
 
     let extra = '';
 
-    if (res.saplings) {
+    if (res.acorns) {
 
-      const sapIcon = this._iconHTML('oak_sapling', 'status-hoe', '树苗') || '🌱';
+      const acornIcon = this._iconHTML('acorn', 'status-hoe', '橡果') || '';
 
-      extra = ` 树苗×${res.saplings} ${sapIcon}`;
+      extra = ` 橡果×${res.acorns} ${acornIcon}`;
 
     }
 
@@ -5024,9 +5068,9 @@ const UI = {
 
   _plantSaplingEffect(row, col) {
 
-    return this._actionEffect(row, col, null, (r, c) => TreeFarm.plantSapling(r, c), (res) => {
+    return this._actionEffect(row, col, null, (r, c) => TreeFarm.plantAcorn(r, c), (res) => {
 
-      Player.useSapling();
+      Player.useAcorn();
 
       this._updateHeldSlot();
 
@@ -5296,7 +5340,7 @@ const UI = {
 
 
 
-  /** 树场场景的点击处理：① 有树→斧头砍；② 空格→选了「树苗」则种下，否则提示。 */
+  /** 树场场景的点击处理：① 有树→斧头砍；② 空格→选了「橡果」则种下，否则提示。 */
 
   _handleTreeFarmClick(row, col, tool) {
 
@@ -5338,15 +5382,15 @@ const UI = {
 
     }
 
-    // 空格：种树苗（需先在背包选中「树苗」，或快捷键切到树苗工具）
+    // 空格：种橡果（需先在背包选中「橡果」，或快捷键切到橡果工具）
 
-    if (tool === 'sapling') {
+    if (tool === 'acorn') {
 
       // 点击即判定：干不了直接提示、不进进度条（有树的情况已被上方 if(tree) 拦截）
 
-      if (!Player.hasSapling()) {
+      if (!Player.hasAcorn()) {
 
-        this.showStatus('🪴 没有树苗，去砍树掉落 1~3 个再来种', 1200);
+        this.showStatus('没有橡果，去砍树掉落 1~3 个再来种', 1200);
 
       } else {
 
@@ -5366,7 +5410,7 @@ const UI = {
 
     if (tool === 'axe') this.showStatus('🪓 这里没有树可砍', 800);
 
-    else this.showStatus('🪴 树场里：按 3 切斧头砍树，或选「树苗」点击空格种植', 1000);
+    else this.showStatus('树场里：按 3 切斧头砍树，或选「橡果」点击空格种植', 1000);
 
     this.render();
 
@@ -5614,11 +5658,11 @@ const UI = {
 
       '🪓': 'wooden_axe',      // 斧头（砍树 / 工具名）
 
-      '🪴': 'oak_sapling',     // 树苗（没树苗提示）
+      '🪴': 'acorn',     // 橡果（没橡果提示）
 
       '🪵': 'wooden_hoe',      // 根系太密（锄头失败提示）：复用锄头贴图
 
-      '🌳': 'oak_sapling',     // 树场有树提示：复用树苗贴图
+      '🌳': 'acorn',     // 树场有树提示：复用橡果贴图
 
       '🌟': 'nether_star',     // 任务达成（Quest.trigger 的达成提示）
 
@@ -5710,7 +5754,7 @@ const UI = {
 
       const LABEL = {
 
-        'money': '金锭', 'wood': '原木', 'planks': '木板', 'saplings': '树苗',
+        'money': '金锭', 'wood': '原木', 'planks': '木板', 'acorns': '橡果',
 
         'axe': '木斧头', 'seed:wheat': '小麦种子', 'seed:strawberry': '甜浆果种子',
 
@@ -6437,7 +6481,7 @@ const UI = {
 
           if (result) {
 
-            this._updateHUD(); // 刷新金币显示
+            this._updateHUD(); // 刷新 HUD（时间/体力）；金币奖励由下面的 openInventory 重渲染背包展示
 
             // 无条件打开背包，确保用户看到奖励
 

@@ -79,22 +79,23 @@ const DATA = {
   },
 
   // === 资源树（可砍伐）===
-  // stage: grown=已长成可被斧头砍倒掉木头；砍后变 stump(树桩)，按 regrowDays 天重新长成 grown。
-  // 木头暂只产不出（为后续建造/经济闭环铺路）。init 为预置在农场上的树坐标 [row,col]。
+  // stage: grown=已长成可被斧头砍倒（掉木头+橡果）；sapling=树场种下橡果长出的树苗，按 acornGrowDays 长成 grown。
+  // ⚠ 树桩(stump)阶段已移除：砍后 trees[r][c]=null 直接消失，由树场每日随机补树（见 TREEFARM）。
+  // 木头可用于背包 2×2 合成格制木板、也是任务回收物。init 为预置在主农场的树坐标 [row,col]（现为空，树都移到树场）。
   TREE: {
     woodYieldMin: 2,
     woodYieldMax: 4,
-    regrowDays: 4,                 // 树桩重新长成大树所需天数
-    saplingYieldMin: 1,            // 砍树掉落的「树苗」数量下限（可种回树场，形成可循环）
-    saplingYieldMax: 3,            // 砍树掉落的「树苗」数量上限
-    saplingGrowDays: 4,            // 种下的树苗长成大树所需天数（与树桩重生同节奏）
+    regrowDays: 4,                 // ⚠ 已无引用（树桩阶段已移除），保留待清理
+    acornYieldMin: 1,            // 砍树掉落的「橡果」数量下限（可种回树场，形成可循环）
+    acornYieldMax: 3,            // 砍树掉落的「橡果」数量上限
+    acornGrowDays: 4,            // 种下的橡果先长树苗、再长成大树所需天数
     init: [], // 主农场不再预置树（树已移到独立树场 TreeFarm 场景，见 TREEFARM 配置）
   },
 
   // === 树场（独立子场景：资源出口，C1 经济闭环延伸）===
   // 与主农场 Farm 解耦：专门一张树场地图，固定大小、区域内随机生成（防通胀）。
   // 与主农场共用 12×10 网格尺寸（渲染/画布逻辑不变），最多 MAX_TREES 棵封顶（产能上限），
-  // 每天随机补几棵至上限（REFILL_PER_DAY）；砍树后直接消失（无树桩阶段），由玩家种树苗(sapling)长回。
+  // 每天随机补几棵至上限（REFILL_PER_DAY）；砍树后直接消失（无树桩阶段），由玩家种橡果(acorn)长回。
   TREEFARM: {
     MAX_TREES: 10,        // 树木上限（防通胀：木头产能封顶）→ 约 1/12 格（12×10=120 格），用户要求从 20 再减半到 10
     INIT_TREES: 6,        // 开局预置树数（< 上限，留出每日补树空间）；用户要求初始 6 棵
@@ -167,17 +168,17 @@ const DATA = {
         { id:'fa1',  parent:'g_farm',  x:80,  y:200, icon:'potato', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
         { id:'fa2',  parent:'fa1',     x:155, y:200, icon:'小麦',        title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 30 金锭酬金。',       cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:30 } },
     // —— 采集支线（砍树 → 补种 → 积材，由主线「林间初探」解锁）——
-        { id:'fo1',  parent:'g_forage', x:80,  y:200, icon:'oak_sapling', title:'林间驿站', desc:'为林间驿站供应 20 份原木修缮木屋，换取 5 株补种树苗。', cat:'forage', manual:true, track:{k:'submit', item:'wood', n:20}, reward:{ items:[{id:'saplings', count:5}] } },
+        { id:'fo1',  parent:'g_forage', x:80,  y:200, icon:'acorn', title:'林间驿站', desc:'为林间驿站供应 20 份原木修缮木屋，换取 5 颗橡果。', cat:'forage', manual:true, track:{k:'submit', item:'wood', n:20}, reward:{ items:[{id:'acorns', count:5}] } },
         { id:'fo2',  parent:'fo1',     x:155, y:200, icon:'sunflower',     title:'猎人补给', desc:'向深山猎人补给 40 份原木，换取 30 金锭犒赏。',           cat:'forage', manual:true, track:{k:'submit', item:'wood', n:40}, reward:{ money:30 } },
     // —— 工匠支线（购斧 → 伐木，由主线「置办农具」解锁）——
         { id:'to1',  parent:'g_tools',  x:80,  y:200, icon:'crafting_arrow',     title:'木工坊供货', desc:'向木工坊交付 16 块木板，换回 10 份原木继续加工。',     cat:'tools', manual:true, track:{k:'submit', item:'planks', n:16}, reward:{ items:[{id:'wood', count:10}] } },
         { id:'to2',  parent:'to1',     x:155, y:200, icon:'command_block',     title:'建筑委托', desc:'承接镇上建筑委托，交付 32 块木板换取 40 金锭。',         cat:'tools', manual:true, track:{k:'submit', item:'planks', n:32}, reward:{ money:40 } },
     // —— 手动教程（FTB manual 任务：悬停看目标/奖励/前后置，点击节点领取；提交物品换奖励，不自动完成）——
-    // reward 结构：{ money?, items:[{id, count}] }；id 支持 money/wood/planks/saplings/axe/seed:<cropId>/crop:<cropId>。
+    // reward 结构：{ money?, items:[{id, count}] }；id 支持 money/wood/planks/acorns/axe/seed:<cropId>/crop:<cropId>。
     { id:'tut1', parent:'root',   x:80,  y:440, icon:'bundle_filled', title:'整备行囊', desc:'点击领取启程物资 —— 5 颗小麦种子，正式踏上农场之旅。', cat:'core', manual:true, tutorial:true, track:{k:'manual'}, reward:{ items:[{id:'seed:wheat', count:5}] } },
     { id:'tut2', parent:'root',   x:80,   y:440, icon:'wheat_stage0', title:'春种秋收', desc:'用小麦种子播种，麦穗成熟后收获；将 5 份小麦交回，换取木料。', cat:'farm', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:5}, reward:{ items:[{id:'wood', count:3}] } },
     { id:'tut3', parent:'root',   x:80,   y:440, icon:'cherry_sapling',     title:'巧手合成', desc:'把 1 个橡木原木放入背包 2×2 合成格制得 4 木板，交回换取木料。', cat:'tools', manual:true, tutorial:true, track:{k:'submit', item:'planks', n:4}, reward:{ items:[{id:'wood', count:4}] } },
-    { id:'tut4', parent:'root',   x:80,   y:440, icon:'wooden_hoe', title:'林间拾薪', desc:'持斧前往树场砍伐，集齐 4 份木头交回，换取树苗以便补种。', cat:'forage', manual:true, tutorial:true, track:{k:'submit', item:'wood', n:4}, reward:{ items:[{id:'saplings', count:3}] } },
+    { id:'tut4', parent:'root',   x:80,   y:440, icon:'wooden_hoe', title:'林间拾薪', desc:'持斧前往树场砍伐，集齐 4 份木头交回，换取橡果以便补种。', cat:'forage', manual:true, tutorial:true, track:{k:'submit', item:'wood', n:4}, reward:{ items:[{id:'acorns', count:3}] } },
     { id:'tut5', parent:'tut1', x:155, y:440, icon:'shop',       title:'集市贸易', desc:'将收获的小麦带到商店售出，用 20 份小麦换取 20 金锭，打通经济循环。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ money:20 } },
   ],
   // 选项卡（分类页签）。id 与 QUESTS[].cat 对应；

@@ -39,7 +39,7 @@ UI.openInventory = function() {
   mainG.classList.add('inv-grid-anim');   // 仅开背包播一次入场动画
   hotG.classList.add('inv-grid-anim');
   this.renderInventory();
-  this._updateHUD();  // 刷新金币/体力 HUD
+  this._updateHUD();  // 刷新 HUD（时间/体力；金币已移入背包格子，HUD 上不再显示）
   // 动画播完移除类，之后任何重渲染（拿起/放下/滚轮）都不再重放
   setTimeout(() => { mainG.classList.remove('inv-grid-anim'); hotG.classList.remove('inv-grid-anim'); }, 1200);
   document.getElementById('inventory-overlay').className = 'overlay-visible';
@@ -107,14 +107,14 @@ UI._makeSlot = function(slot, index, isHotbar, isSelected) {
   el.classList.add(cls);
 
   // 工具/种子数量为 0 时显示为空格（MC 风格：没货就空着，但仍可拖入）
-  const emptyToolSeed = (slot.kind === 'tool' && slot.toolId === 'sapling' && !(slot.count > 0)) ||
+  const emptyToolSeed = (slot.kind === 'tool' && slot.toolId === 'acorn' && !(slot.count > 0)) ||
                         (slot.kind === 'seed' && !(slot.count > 0));
   if (emptyToolSeed) { el.classList.add('inv-empty'); return el; }
 
   const src = this._assetURL(slot.key) || '';
   let showCount = '';
   if (slot.kind === 'stack') showCount = slot.count > 1 ? slot.count : '';
-  else if (slot.kind === 'tool') showCount = (slot.toolId === 'sapling' && slot.count > 0) ? slot.count : '';
+  else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 0) ? slot.count : '';
   else if (slot.kind === 'seed') showCount = slot.count > 1 ? slot.count : '';
 
   el.title = slot.label + (showCount !== '' ? (' ×' + showCount) : '');
@@ -459,7 +459,7 @@ UI._invApplyHotbarSel = function() {
   else if (slot && slot.kind === 'seed') Player.selectTool('seed-' + slot.seedId);
   this._updateHeldSlot();
   this.renderInventory();               // 重绘以更新快捷栏选中背景贴图
-  const names = { hoe: '锄头', water: '水桶', axe: '斧头', sapling: '树苗' };
+  const names = { hoe: '锄头', water: '水桶', axe: '斧头', acorn: '橡果' };
   const msg = slot
     ? (slot.kind === 'seed' ? '选择种子：' + slot.label : '选择工具：' + (names[slot.toolId] || slot.label))
     : '空手';
@@ -499,7 +499,7 @@ UI._updateGhost = function() {
   const src = this._assetURL(slot.key) || '';
   let showCount = '';
   if (slot.kind === 'stack') showCount = slot.count > 1 ? slot.count : '';
-  else if (slot.kind === 'tool') showCount = (slot.toolId === 'sapling' && slot.count > 0) ? slot.count : '';
+  else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 0) ? slot.count : '';
   else if (slot.kind === 'seed') showCount = slot.count > 1 ? slot.count : '';
   g.innerHTML = (src ? `<img src="${src}" alt="${slot.label}">` : '') +
                 (showCount !== '' ? `<span class="inv-count">${showCount}</span>` : '');
@@ -688,7 +688,7 @@ UI._renderBottomHotbar = function() {
     if (slot) {
       const icon = document.createElement('img');
       icon.className = 'item-icon';
-      const toolKeyMap = { hoe: 'wooden_hoe', water: 'water_bucket', axe: 'wooden_axe', sapling: 'oak_sapling' };
+      const toolKeyMap = { hoe: 'wooden_hoe', water: 'water_bucket', axe: 'wooden_axe', acorn: 'acorn' };
       const iconSrc = slot.kind === 'tool'
         ? this._assetURL(toolKeyMap[slot.toolId] || slot.toolId)
         : slot.kind === 'seed'
