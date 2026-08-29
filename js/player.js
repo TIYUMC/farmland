@@ -251,6 +251,11 @@ const Player = {
   /** 加橡果（砍树掉落） */
   addAcorns(amount) {
     this.acorns += (amount || 0);
+    // 新增橡果时同步刷新背包布局，确保快捷栏/主栏可见
+    if (typeof UI !== 'undefined' && UI._renderBottomHotbar) {
+      this._rebuildInvSlots();
+      UI._renderBottomHotbar();
+    }
   },
 
   /** 加木板（原木合成获得，1 原木 → 4 木板） */
