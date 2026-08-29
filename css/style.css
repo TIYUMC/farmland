@@ -1273,26 +1273,10 @@ body {
   .tool-btn { min-width: 44px; padding: 3px 6px; }
   #toolbar .tool-icon-img { width: 24px; height: 24px; }
 
-  /* 手机端：工具栏改竖排，快捷栏独占一行 */
-  #toolbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 2px;
-    padding: 4px 8px;
-  }
-  /* 快捷栏行：保持flex横排，9格×40px+8×2px=376px */
-  #bottom-hotbar {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-    justify-content: center !important;
-    gap: 2px !important;
-    padding: 3px 4px !important;
-  }
-  #bottom-hotbar .hotbar-cell { width: 40px; height: 40px; flex-shrink: 0; }
-  #bottom-hotbar .item-icon { width: 28px; height: 28px; }
-  /* 按钮行：横向滚动 */
-  #toolbar .tool-btn { min-width: 60px; flex-shrink: 0; }
-  #toolbar .tool-icon-img { width: 24px; height: 24px; }
+  /* 手机端：保持横排，调小格子确保所有元素在一行内 */
+  #toolbar { flex-direction: row; overflow-x: auto; touch-action: pan-x; }
+  #bottom-hotbar .hotbar-cell { width: 36px; height: 36px; }
+  #bottom-hotbar .item-icon { width: 24px; height: 24px; }
 
   /* 状态提示与 Toast 缩小，避免挡住画面 */
   #status-message { font-size: 12px; padding: 5px 12px; }
