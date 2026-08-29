@@ -151,11 +151,13 @@ UI._executeTrade = function(t) {
     if (isTool) {
       Player.ownedTools[t.cropId] = true;
       Player.selectTool(t.cropId);
+      Player._ensureToolInHotbar(t.cropId);  // 新工具自动放入快捷栏第一个空位
       Player._rebuildInvSlots();   // 工具加入背包，重建缓存使快捷栏可见
       UI._renderBottomHotbar();    // 刷新底部 MC 快捷栏 DOM
       this._updateHeldSlot();
     } else if (t.kind === 'buy') {
       Player.addSeeds(t.cropId, 1);
+      Player._ensureSeedInHotbar(t.cropId);  // 新种子自动放入快捷栏第一个空位
       Player._rebuildInvSlots();   // 种子加入背包，同步缓存
       UI._renderBottomHotbar();    // 刷新底部 MC 快捷栏 DOM
     } else {

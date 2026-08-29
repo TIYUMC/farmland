@@ -88,6 +88,30 @@ const Player = {
   _hbHasSeed(seedId) {
     return !!(this._hotbarSlots && this._hotbarSlots.some(s => s && s.kind === 'seed' && s.seedId === seedId));
   },
+  /** 将新工具自动放入快捷栏第一个空位（不覆盖已有项） */
+  _ensureToolInHotbar(toolId) {
+    if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
+    if (this._hbHasTool(toolId)) return;
+    const map = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, acorn: { key: 'acorn', label: '橡果' } };
+    const m = map[toolId] || { key: toolId, label: toolId };
+    for (let i = 0; i < 9; i++) {
+      if (!this._hotbarSlots[i]) {
+        this._hotbarSlots[i] = { kind: 'tool', toolId };
+        break;
+      }
+    }
+  },
+  /** 将新种子自动放入快捷栏第一个空位（不覆盖已有项） */
+  _ensureSeedInHotbar(seedId) {
+    if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
+    if (this._hbHasSeed(seedId)) return;
+    for (let i = 0; i < 9; i++) {
+      if (!this._hotbarSlots[i]) {
+        this._hotbarSlots[i] = { kind: 'seed', seedId };
+        break;
+      }
+    }
+  },
 
   /** 由身份描述(或 null)生成一个可渲染的槽位对象（工具/种子 count 为动态显示值） */
   _slotFromIdentity(id) {
