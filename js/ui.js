@@ -3007,6 +3007,9 @@ const UI = {
       // 树场：只画草、树和缠根泥土
       const hasTree = !!(TreeFarm.trees[r] && TreeFarm.trees[r][c]);
       if (hasTree) {
+        // 先铺裸土底（与 _renderTreeFarmScene 一致：有树/树苗的格不画草，露出裸土），
+        // 防止农场缓存中残留的旧草色从树下方透出形成纯绿方块。
+        this._drawGrassGroundCell(ctx, r, c, x, y, cs, 0, true, colors);
         this._drawTreeEntity(ctx, x, y, cs, TreeFarm.trees[r][c]);
         return;
       }
