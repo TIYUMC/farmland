@@ -557,12 +557,10 @@ body {
   margin: 4px 0;
 }
 
-/* ===== 底部工具栏历史占位按钮：DOM 保留但隐藏，避免 main.js 绑定取不到节点 =====
-   注：原「背包左侧操作列」(#inv-topbar，含商店/睡觉/调试/任务) 已移除，
-   商店 / 任务 现位于主页面底部工具栏（#btn-shop / #btn-quest）。 */
-/* 商店 / 任务 入口已回到主页面底部工具栏（#btn-shop / #btn-quest），背包内不再放这两个按钮。
-   #btn-sleep / #btn-debug 仍是历史占位 DOM，保持隐藏避免 main.js 绑定取不到节点报错。 */
-#btn-sleep, #btn-debug { display: none; }
+/* ===== 底部工具栏历史占位按钮 =====
+   注：原「背包左侧操作列」(#inv-topbar) 已移除。
+   #btn-sleep / #btn-inv-sleep 的 DOM 已删除，保持隐藏避免 main.js 绑定报错。 */
+#btn-sleep, #btn-inv-sleep { display: none; }
 #hud-bar .debug-cluster { margin-left: auto; }
 
 /* MC 2×2 合成格 + 输出格：按 inventory.png 纹理像素比例绝对定位，贴到纹理格子上

@@ -97,11 +97,6 @@
       if (UI._shopOpen) UI.closeShop(); else UI.openShop();
     });
 
-    // ⚠ 睡觉按钮 (#btn-sleep) 的 DOM 已移除，睡觉现由 Z 键触发；绑定保留备用
-    //   （合法性「晚 6 点后」由 Engine.sleep 内部校验）
-    const sleepBtn = document.getElementById('btn-sleep');
-    if (sleepBtn) sleepBtn.addEventListener('click', () => Engine.sleep());
-
     // 存档按钮：立即保存（带闪光效果）
     const btnSave = document.getElementById('btn-save');
     if (btnSave) btnSave.addEventListener('click', () => { SaveGame.save(); _flashSave(); });
@@ -118,13 +113,6 @@
       });
     }
 
-    // ⚠ 下面 #btn-inv-sleep 的 DOM 已移除（背包内不再放睡觉按钮），绑定保留备用。
-    //    商店 / 任务 入口也已移到主页面底部工具栏（见 #btn-shop / #btn-quest），背包内不再提供。
-    const invSleep = document.getElementById('btn-inv-sleep');
-    if (invSleep) invSleep.addEventListener('click', () => {
-      UI.closeInventory();                 // 关背包后睡觉（结算进入第二天）
-      Engine.sleep();
-    });
     const invDebug = document.getElementById('btn-inv-debug');
     if (invDebug) invDebug.addEventListener('click', () => {
       const on = !Engine.debugFast;
@@ -341,11 +329,8 @@
    */
   function _setToolbarIcons() {
     _setBtnIcon('btn-shop',     'shop');
-    _setBtnIcon('btn-sleep',    'red_bed');
     _setBtnIcon('btn-debug',    'command_block');
     _setBtnIcon('btn-quest',    'book_purple');
-    _setBtnIcon('btn-inv-sleep','red_bed');
-    _setBtnIcon('btn-inv-debug','command_block');
     _setBtnIcon('btn-save',     'chest');
     _setHudIcon('hud-ico-stamina', 'food_full');
     _setHudIcon('hud-ico-time',    'time');
