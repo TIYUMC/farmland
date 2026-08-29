@@ -2697,6 +2697,12 @@ const UI = {
   _invalidateCell(row, col) {
     const key = row + "," + col;
     this._farmCacheDirty.add(key);
+    // 树场：树冠高 cs*1.5，向上溢出约 0.5~0.8 格到上一行，需同步失效上一行，
+    // 否则旧草色会从树冠上方残留形成绿方块闪屏。
+    if (this.scene === "treeFarm" && row > 0) {
+      const upKey = (row - 1) + "," + col;
+      this._farmCacheDirty.add(upKey);
+    }
     // 草格和花朵需要同时使 vegCache 失效
     const grassSrc = (this.scene === "treeFarm") ? TreeFarm : Farm;
     const gstate = (grassSrc.grass && grassSrc.grass[row]) ? (grassSrc.grass[row][col] || 0) : 0;
