@@ -63,7 +63,7 @@ const DATA = {
       shopSellIcon: 'mc_sweet_berries', // shop 卖行用甜浆果物品图，而非灌木生长图
     },
     acorn: {
-      name: '橡果', seedCost: 10, sellPrice: 0, color: '#8B5A2B',
+      name: '橡果', seedCost: 10, sellPrice: 10, color: '#8B5A2B',
       growDays: 0, regrow: false,
       sprite: '🌰', harvestSprite: '🌰',
       assetStages: [],

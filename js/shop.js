@@ -110,9 +110,8 @@ UI._buildTrades = function() {
       output: { key: this._seedIconKey(cropId), label: item.name },
       canDo: Player.money >= def.seedCost,
     });
-    // 橡果不计入 inventory（存在 Player.acorns），生成卖行无意义，跳过
-    if (cropId === 'acorn') continue;
-    const have = Player.inventory[cropId] || 0;
+    // 橡果不计入 inventory，单独存在 Player.acorns，卖行数量从那里读
+    const have = (cropId === 'acorn') ? (Player.acorns || 0) : (Player.inventory[cropId] || 0);
     trades.push({
       id: 'sell_' + cropId, kind: 'sell', cropId,
       label: '卖' + def.name,
@@ -168,9 +167,9 @@ UI._executeTrade = function(t) {
       Player._rebuildInvSlots();
       UI._renderBottomHotbar();
     } else {
-      const cnt = Player.inventory[t.cropId] || 0;
-      const def = DATA.CROPS[t.cropId];
-      if (cnt > 0) { Player.addMoney(def.sellPrice * cnt); delete Player.inventory[t.cropId]; }
+      // 全卖（含橡果：存量在 Player.acorns，统一交给 Economy 处理）
+      const r = Economy._resolveSellable(t.cropId);
+      if (r.ok) Economy._applySale(t.cropId, r.count, r);
     }
     this._refreshTradesAfterDeal();
     return;
@@ -198,19 +197,6 @@ UI._executeTrade = function(t) {
   const cost = t.kind === 'buy' ? def.seedCost : 1;
   if (this._shopDroppedCount < cost) {
     this.showStatus(t.kind === 'buy' ? '❌ 金锭不足，无法继续购买' : '❌ 作物不足', 1200);
-    return;
-  }
-  // 橡果特殊处理：不走 Economy.buySeed（它会调 addSeeds），直接扣钱 + addAcorns
-  if (t.kind === 'buy' && t.cropId === 'acorn') {
-    Player.spendMoney(cost);
-    Player.addAcorns(cost);
-    Player._ensureToolInHotbar('acorn');
-    Player._rebuildInvSlots();
-    UI._renderBottomHotbar();
-    this._updateHeldSlot();
-    this.showStatus(`✅ 购买了 ${def.name}×${cost}`, 1000);
-    this._resetShopDropped();
-    this._refreshTradesAfterDeal();
     return;
   }
   const res = t.kind === 'buy'

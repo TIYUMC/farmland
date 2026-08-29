@@ -18,13 +18,14 @@ const Economy = {
     return DATA.SHOP_ITEMS.find(s => s.id === id);
   },
 
-  /** 购买种子 */
+  /** 购买种子（橡果不计入 seeds，走 Player.acorns） */
   buySeed(seedId) {
     const item = this._findShopItem(seedId);
     if (!item) return { ok: false, reason: '未知种子' };
     if (Player.money < item.cost) return { ok: false, reason: '钱不够' };
     Player.spendMoney(item.cost);
-    Player.addSeeds(seedId, 1);
+    if (seedId === 'acorn') Player.addAcorns(1);
+    else Player.addSeeds(seedId, 1);
     return { ok: true, name: item.name };
   },
 
@@ -39,18 +40,19 @@ const Economy = {
     return this._applySale(cropId, sell, r);
   },
 
-  /** 应用一次出售：加钱 + 按售出数量删除/递减背包作物，返回成交结果（sellCropUnits 共用，消除重复的 addMoney + inventory 改写 + 返回） */
+  /** 应用一次出售：加钱 + 按售出数量删除/递减作物，返回成交结果（sellCropUnits 共用，消除重复的 addMoney + 存量改写 + 返回） */
   _applySale(cropId, sell, r) {
     const total = r.def.sellPrice * sell;
     Player.addMoney(total);
-    if (sell >= r.count) delete Player.inventory[cropId];
+    if (cropId === 'acorn') Player.addAcorns(-sell);   // 橡果存量在 Player.acorns
+    else if (sell >= r.count) delete Player.inventory[cropId];
     else Player.inventory[cropId] = r.count - sell;
     return { ok: true, total, count: sell, name: r.def.name };
   },
 
   /** 校验某作物是否可出售，返回 { ok:true, def, count } 或 { ok:false, reason }（供 sellCropUnits 复用） */
   _resolveSellable(cropId) {
-    const count = Player.inventory[cropId];
+    const count = (cropId === 'acorn') ? (Player.acorns || 0) : Player.inventory[cropId];
     if (!count || count <= 0) return { ok: false, reason: '背包里没有该作物' };
     const def = DATA.CROPS[cropId];
     if (!def || def.sellPrice <= 0) return { ok: false, reason: '该作物不可出售' };
