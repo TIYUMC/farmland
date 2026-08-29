@@ -100,17 +100,6 @@ UI._buildTrades = function() {
       });
       continue;
     }
-    // 橡果类（type:'acorn'）：直接买橡果，输入=金锭，输出=橡果贴图
-    if (item.type === 'acorn') {
-      trades.push({
-        id: 'buy_' + item.id, kind: 'acorn', cropId: item.id,
-        label: '买' + item.name,
-        input:  { key: 'money', label: String(item.cost) },
-        output: { key: 'acorn', label: item.name },
-        canDo: Player.money >= item.cost,
-      });
-      continue;
-    }
     const cropId = item.id;
     const def = DATA.CROPS[cropId];
     if (!def) continue;
@@ -167,16 +156,15 @@ UI._executeTrade = function(t) {
       UI._renderBottomHotbar();    // 刷新底部 MC 快捷栏 DOM
       this._updateHeldSlot();
     } else if (t.kind === 'buy') {
-      Player.addSeeds(t.cropId, 1);
-      Player._ensureSeedInHotbar(t.cropId);  // 新种子自动放入快捷栏第一个空位
-      Player._rebuildInvSlots();   // 种子加入背包，同步缓存
-      UI._renderBottomHotbar();    // 刷新底部 MC 快捷栏 DOM
-    } else if (t.kind === 'acorn') {
-      Player.addAcorns(1);
-      Player._ensureToolInHotbar('acorn');  // 橡果自动放入快捷栏
+      if (t.cropId === 'acorn') {
+        Player.addAcorns(1);
+        Player._ensureToolInHotbar('acorn');
+      } else {
+        Player.addSeeds(t.cropId, 1);
+        Player._ensureSeedInHotbar(t.cropId);
+      }
       Player._rebuildInvSlots();
       UI._renderBottomHotbar();
-      this._updateHeldSlot();
     } else {
       const cnt = Player.inventory[t.cropId] || 0;
       const def = DATA.CROPS[t.cropId];
@@ -202,30 +190,25 @@ UI._executeTrade = function(t) {
     this._refreshTradesAfterDeal();
     return;
   }
-  // 橡果：直接扣金锭，不依赖输入框（点击即买）
-  if (t.kind === 'acorn') {
-    const item = UI._findShopItem(t.cropId);
-    if (!item || Player.money < item.cost) {
-      this.showStatus('❌ 金锭不足', 1200);
-      this._refreshTradesAfterDeal();
-      return;
-    }
-    Player.spendMoney(item.cost);
-    Player.addAcorns(1);
-    Player._ensureToolInHotbar('acorn');
-    Player._rebuildInvSlots();
-    UI._renderBottomHotbar();
-    this._updateHeldSlot();
-    this.showStatus(`✅ 购买了 ${item.name}`, 1000);
-    this._refreshTradesAfterDeal();
-    return;
-  }
   // 以下为作物「买种子 / 卖作物」：必须先已把正确原材料拖入输入框
   if (this._guard(this._shopDroppedId !== t.id, '请先把原材料拖入输入框')) return;
   const def = DATA.CROPS[t.cropId];
   const cost = t.kind === 'buy' ? def.seedCost : 1;
   if (this._shopDroppedCount < cost) {
     this.showStatus(t.kind === 'buy' ? '❌ 金锭不足，无法继续购买' : '❌ 作物不足', 1200);
+    return;
+  }
+  // 橡果特殊处理：不走 Economy.buySeed（它会调 addSeeds），直接扣钱 + addAcorns
+  if (t.kind === 'buy' && t.cropId === 'acorn') {
+    Player.spendMoney(cost);
+    Player.addAcorns(cost);
+    Player._ensureToolInHotbar('acorn');
+    Player._rebuildInvSlots();
+    UI._renderBottomHotbar();
+    this._updateHeldSlot();
+    this.showStatus(`✅ 购买了 ${def.name}×${cost}`, 1000);
+    this._resetShopDropped();
+    this._refreshTradesAfterDeal();
     return;
   }
   const res = t.kind === 'buy'

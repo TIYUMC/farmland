@@ -665,7 +665,7 @@ UI._renderCraft = function() {
 
 /** 种子贴图 key 映射（统一用 MC 贴图，不再混用小图） */
 UI._seedIconKey = function(cropId) {
-  return ({ wheat: 'wheat_seeds', potato: 'potato', strawberry: 'mc_sweet_berries' })[cropId] || 'wheat_seeds';
+  return ({ wheat: 'wheat_seeds', potato: 'potato', strawberry: 'mc_sweet_berries', acorn: 'acorn' })[cropId] || 'wheat_seeds';
 };
 
 /** 渲染底部始终可见的 MC 风格快捷栏（9 格） */

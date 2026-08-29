@@ -62,6 +62,13 @@ const DATA = {
       assetHarvest: 'sweet_berry_bush_stage3',
       shopSellIcon: 'mc_sweet_berries', // shop 卖行用甜浆果物品图，而非灌木生长图
     },
+    acorn: {
+      name: '橡果', seedCost: 10, sellPrice: 0, color: '#8B5A2B',
+      growDays: 0, regrow: false,
+      sprite: '🌰', harvestSprite: '🌰',
+      assetStages: [],
+      assetHarvest: 'acorn',
+    },
   },
 
   // === 玩家初始状态 ===
@@ -114,7 +121,7 @@ const DATA = {
       costItems: [{ id: 'wheat', count: 5 }],
       desc: '砍树必备 · 20金锭 + 5小麦' },
     // 橡果：种树场用，10金/颗
-    { id: 'acorn',       name: '橡果',   cost: 10, type: 'acorn',
+    { id: 'acorn',       name: '橡果',   cost: 10,
       desc: '树场专用 · 10金/颗' },
   ],
 
