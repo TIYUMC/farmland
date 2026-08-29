@@ -641,8 +641,9 @@ const UI = {
     const availW = gameArea.clientWidth || window.innerWidth;
     let availH = gameArea.clientHeight;
     if (!availH) {
-      // 布局尚未稳定时的兜底（toolbar 已包含 hotbar，只减一次）
-      availH = window.innerHeight - hud.offsetHeight - toolbar.offsetHeight - 8;
+      // 布局尚未稳定时的兜底（toolbar 和 hotbar 分开，各减一次）
+      const hotbar = document.getElementById('bottom-hotbar');
+      availH = window.innerHeight - hud.offsetHeight - toolbar.offsetHeight - (hotbar ? hotbar.offsetHeight : 0) - 8;
     }
 
 

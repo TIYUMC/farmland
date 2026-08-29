@@ -708,12 +708,13 @@ UI._renderBottomHotbar = function() {
   }
 };
 
-/** 一次性绑定底部快捷栏滚轮和点击事件 */
+/** 一次性绑定底部快捷栏滚轮、点击和触摸滑动事件 */
 UI._bindBottomHotbar = function() {
   if (this._bottomHotbarBound) return;
   this._bottomHotbarBound = true;
   const grid = document.getElementById('bottom-hotbar');
   if (!grid) return;
+  // 鼠标滚轮（桌面）
   document.addEventListener('wheel', (e) => {
     e.preventDefault();
     const delta = Math.sign(e.deltaY || e.deltaX);
@@ -721,6 +722,7 @@ UI._bindBottomHotbar = function() {
     UI._invApplyHotbarSel();
     UI._renderBottomHotbar();
   }, { passive: false });
+  // 点击选中
   grid.addEventListener('click', (e) => {
     const cell = e.target.closest('.hotbar-cell');
     if (!cell) return;
@@ -730,5 +732,21 @@ UI._bindBottomHotbar = function() {
     UI._invApplyHotbarSel();
     UI._renderBottomHotbar();
   });
+  // 触摸滑动（手机）：左滑→下一个，右滑→上一个
+  let _touchStartX = null;
+  const SWIPE_THRESHOLD = 30;
+  grid.addEventListener('touchstart', (e) => {
+    _touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  grid.addEventListener('touchend', (e) => {
+    if (_touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - _touchStartX;
+    _touchStartX = null;
+    if (Math.abs(dx) < SWIPE_THRESHOLD) return;
+    const delta = Math.sign(-dx);
+    Player._hotbarSel = (Player._hotbarSel + delta + 9) % 9;
+    UI._invApplyHotbarSel();
+    UI._renderBottomHotbar();
+  }, { passive: true });
 };
 
