@@ -101,18 +101,7 @@
     const btnSave = document.getElementById('btn-save');
     if (btnSave) btnSave.addEventListener('click', () => { SaveGame.save(); _flashSave(); });
 
-    // 调试快进按钮（临时功能）：开启后 0.5 秒 = 1 天，方便快速测试作物生长/时间流逝
-    const debugBtn = document.getElementById('btn-debug');
-    if (debugBtn) {
-      debugBtn.addEventListener('click', () => {
-        const on = !Engine.debugFast;
-        Engine.setDebugFast(on);
-        debugBtn.classList.toggle('debug-on', on);
-        if (on && typeof UI.closeSummary === 'function') UI.closeSummary();
-        UI.showStatus(on ? '⚡ 调试快进：0.5 秒 = 1 天' : '调试快进已关闭', 1200);
-      });
-    }
-
+    // 调试快进按钮（HUD 顶栏）：开启后 0.5 秒 = 1 天，方便快速测试作物生长/时间流逝
     const invDebug = document.getElementById('btn-inv-debug');
     if (invDebug) invDebug.addEventListener('click', () => {
       const on = !Engine.debugFast;
@@ -329,7 +318,7 @@
    */
   function _setToolbarIcons() {
     _setBtnIcon('btn-shop',     'shop');
-    _setBtnIcon('btn-debug',    'command_block');
+    _setBtnIcon('btn-inv-debug','command_block');
     _setBtnIcon('btn-quest',    'book_purple');
     _setBtnIcon('btn-save',     'chest');
     _setHudIcon('hud-ico-stamina', 'food_full');
