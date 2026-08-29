@@ -113,6 +113,9 @@ const DATA = {
     { id: 'axe',         name: '木斧头', cost: 20, type: 'tool',
       costItems: [{ id: 'wheat', count: 5 }],
       desc: '砍树必备 · 20金锭 + 5小麦' },
+    // 橡果：种树场用，10金/颗
+    { id: 'acorn',       name: '橡果',   cost: 10, type: 'acorn',
+      desc: '树场专用 · 10金/颗' },
   ],
 
   // === 花朵物种注册表（数组下标+1 = Farm.flowers[r][c] 的花种编号；0=无花）===

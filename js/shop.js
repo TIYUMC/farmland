@@ -100,6 +100,17 @@ UI._buildTrades = function() {
       });
       continue;
     }
+    // 橡果类（type:'acorn'）：直接买橡果，输入=金锭，输出=橡果贴图
+    if (item.type === 'acorn') {
+      trades.push({
+        id: 'buy_' + item.id, kind: 'acorn', cropId: item.id,
+        label: '买' + item.name,
+        input:  { key: 'money', label: String(item.cost) },
+        output: { key: 'acorn', label: item.name },
+        canDo: Player.money >= item.cost,
+      });
+      continue;
+    }
     const cropId = item.id;
     const def = DATA.CROPS[cropId];
     if (!def) continue;
@@ -160,6 +171,12 @@ UI._executeTrade = function(t) {
       Player._ensureSeedInHotbar(t.cropId);  // 新种子自动放入快捷栏第一个空位
       Player._rebuildInvSlots();   // 种子加入背包，同步缓存
       UI._renderBottomHotbar();    // 刷新底部 MC 快捷栏 DOM
+    } else if (t.kind === 'acorn') {
+      Player.addAcorns(1);
+      Player._ensureToolInHotbar('acorn');  // 橡果自动放入快捷栏
+      Player._rebuildInvSlots();
+      UI._renderBottomHotbar();
+      this._updateHeldSlot();
     } else {
       const cnt = Player.inventory[t.cropId] || 0;
       const def = DATA.CROPS[t.cropId];
@@ -182,6 +199,24 @@ UI._executeTrade = function(t) {
     } else {
       this.showStatus(`❌ ${res ? res.reason : '交易失败'}`, 1200);
     }
+    this._refreshTradesAfterDeal();
+    return;
+  }
+  // 橡果：直接扣金锭，不依赖输入框（点击即买）
+  if (t.kind === 'acorn') {
+    const item = UI._findShopItem(t.cropId);
+    if (!item || Player.money < item.cost) {
+      this.showStatus('❌ 金锭不足', 1200);
+      this._refreshTradesAfterDeal();
+      return;
+    }
+    Player.spendMoney(item.cost);
+    Player.addAcorns(1);
+    Player._ensureToolInHotbar('acorn');
+    Player._rebuildInvSlots();
+    UI._renderBottomHotbar();
+    this._updateHeldSlot();
+    this.showStatus(`✅ 购买了 ${item.name}`, 1000);
     this._refreshTradesAfterDeal();
     return;
   }
