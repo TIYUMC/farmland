@@ -158,6 +158,11 @@ body {
   justify-content: center;
 }
 #toolbar > * { flex-shrink: 0; }
+/* 按钮组容器：让4个按钮在同一行内 */
+#toolbar-buttons {
+  display: flex; flex-direction: row; align-items: center; gap: 4px;
+  flex-shrink: 0;
+}
 .tool-btn {
   display: flex; flex-direction: column; align-items: center;
   padding: 4px 10px;
@@ -1199,41 +1204,32 @@ body {
   /* ── 画布区占满剩余空间 ── */
   #game-area { flex: 1 1 auto; min-width: 0; }
 
-  /* ── 工具栏：右侧竖排 ── */
+  /* ── 工具栏：竖排两行（快捷栏第一行、按钮第二行），各自横排可滑动 ── */
   #toolbar {
-    width: 100px;
     flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-start;
-    padding: 5px 4px;
-    gap: 5px;
-    flex-shrink: 0;
-    border-top: none;
-    border-left: 2px solid var(--border);
-    overflow-x: hidden;
-    overflow-y: auto;
+    align-items: center;
+    padding: 4px 6px;
+    gap: 4px;
   }
-  .tool-btn {
-    padding: 3px 4px;
-    min-width: 0;
-    width: 100%;
-    border-radius: 6px;
-  }
-  #toolbar .tool-name { display: none; }   /* 侧栏窄，只留图标 */
-  #toolbar .tool-icon-img { width: 22px; height: 22px; }
-  #toolbar .tool-emoji { font-size: 16px; }
 
-  /* ── 快捷栏：9 格改 2 列网格（5 行），否则竖排会超出屏高 ── */
+  /* ── 快捷栏：第一行横排，可左右滑动 ── */
   #bottom-hotbar {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 3px;
-    padding: 0;
-    background: transparent;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    touch-action: pan-x;
+    width: 100%;
+    justify-content: center;
   }
-  #bottom-hotbar .hotbar-cell { width: 100%; height: 36px; }
+  #bottom-hotbar .hotbar-cell { width: 36px; height: 36px; }
   #bottom-hotbar .item-icon { width: 24px; height: 24px; }
   #bottom-hotbar .item-count { font-size: 8px; }
+
+  /* ── 按钮行：第二行横排，可左右滑动 ── */
+  #toolbar > .tool-btn {
+    flex-shrink: 0;
+  }
 
   /* ── 状态提示 / Toast 缩小，避免横屏下挡住画面 ── */
   #status-message { font-size: 12px; padding: 4px 12px; }
@@ -1268,15 +1264,33 @@ body {
   #season-jump { padding: 1px 4px; font-size: 10px; }
   #hud-bar .debug-cluster { margin-left: 0; }
 
-  /* 工具栏收窄（本身已有 overflow-x:auto，这里只是让按钮别撑太宽） */
-  #toolbar { padding: 4px 6px; gap: 4px; }
-  .tool-btn { min-width: 44px; padding: 3px 6px; }
-  #toolbar .tool-icon-img { width: 24px; height: 24px; }
-
-  /* 手机端：保持横排，调小格子确保所有元素在一行内 */
-  #toolbar { flex-direction: row; overflow-x: auto; touch-action: pan-x; }
-  #bottom-hotbar .hotbar-cell { width: 36px; height: 36px; }
+  /* 手机端：竖排两行（快捷栏第一行、按钮第二行），各自横排可滑动 */
+  #toolbar {
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 6px;
+    gap: 4px;
+  }
+  #toolbar-buttons {
+    display: flex; flex-direction: row; align-items: center; gap: 4px;
+    overflow-x: auto; touch-action: pan-x;
+    /* 不去掉width:100%，但用justify-content:center让按钮组居中 */
+    width: auto; justify-content: center;
+  }
+  #toolbar > .tool-btn { min-width: 44px; padding: 3px 6px; }
+  #toolbar > .tool-btn .tool-icon-img { width: 24px; height: 24px; }
+  #bottom-hotbar {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    touch-action: pan-x;
+    width: auto;
+    justify-content: center;
+  }
+  #bottom-hotbar .hotbar-cell { width: 36px; height: 36px; flex-shrink: 0; }
   #bottom-hotbar .item-icon { width: 24px; height: 24px; }
+  #bottom-hotbar .item-count { font-size: 8px; }
 
   /* 状态提示与 Toast 缩小，避免挡住画面 */
   #status-message { font-size: 12px; padding: 5px 12px; }
