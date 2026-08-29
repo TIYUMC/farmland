@@ -621,10 +621,7 @@ UI._drawShopOverlay = function() {
   /** 按鼠标 y 设商店列表滚动位置（滚动条拖拽与点击槽共用，消除重复的 t 计算 + clamp + 重绘） */
   UI._setShopScrollFromY = function(y) {
     const b = this._shopLayout.scrollBar;
-    // 与把手绘制位置对齐：把手中心跟随鼠标，而非用整个轨道做线性映射。
-    // 旧版用 (y - b.y) / b.h，maxScroll 只有 1~2 时要拖过半个轨道才跳一档，手感像「滑不动」。
-    const travel = Math.max(1, b.h - b.thumbH);
-    const t = (y - b.y - b.thumbH / 2) / travel;
+    const t = (y - b.y) / b.h;
     this._shopScroll = Math.min(Math.max(0, Math.round(t * b.maxScroll)), b.maxScroll);
     this._markShopDirty();
   };

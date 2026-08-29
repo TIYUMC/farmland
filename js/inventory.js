@@ -716,6 +716,8 @@ UI._bindBottomHotbar = function() {
   if (!grid) return;
   // 鼠标滚轮（桌面）
   document.addEventListener('wheel', (e) => {
+    // 任一面板打开时滚轮归该面板所有（商店滚交易列表），不再切换快捷栏
+    if (UI._shopOpen || UI._inventoryOpen || UI._questOpen) return;
     e.preventDefault();
     const delta = Math.sign(e.deltaY || e.deltaX);
     Player._hotbarSel = (Player._hotbarSel + delta + 9) % 9;
