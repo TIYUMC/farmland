@@ -4520,7 +4520,7 @@ const UI = {
       ctx.fillText(`cell: ${hr},${hc}`, 10, 32);
       ctx.fillText(`cs=${cs} x=${hc*cs} y=${hr*cs}`, 10, 46);
       ctx.fillText(`rect: ${this.canvas.getBoundingClientRect().x.toFixed(0)},${this.canvas.getBoundingClientRect().y.toFixed(0)}`, 10, 60);
-      ctx.fillText(`client: ${e ? e.clientX.toFixed(0) : '?'},${e ? e.clientY.toFixed(0) : '?'}`, 10, 74);
+      ctx.fillText('client: ?', 10, 74);
       // 十字准星
       ctx.strokeStyle = 'rgba(255,0,0,0.5)';
       ctx.lineWidth = 1;
