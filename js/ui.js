@@ -417,6 +417,7 @@ const UI = {
     this.canvas = document.getElementById('game-canvas');
 
     this.canvas.style.outline = '2px solid red'; // DEBUG: canvas边界
+    this._debugTest = true; // 调试：每帧画红色测试块
     this.ctx = this.canvas.getContext('2d');
 
     this._resize();
@@ -716,6 +717,14 @@ const UI = {
     const ctx = this.ctx;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);   // 每帧从单位矩阵开始，消除任何残留 translate 累积导致的抖动画面
+    // 调试：每帧画一个红色方块在左上角，确认渲染正常
+    if (this._debugTest) {
+      ctx.fillStyle = 'rgba(255,0,0,0.5)';
+      ctx.fillRect(10, 10, 50, 50);
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px monospace';
+      ctx.fillText('DEBUG TEST', 12, 40);
+    }
 
     const cs = this.cellSize;
 
