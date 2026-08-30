@@ -4772,30 +4772,20 @@ const UI = {
 
     }
 
-    // 只在悬停格子变化时重绘，避免乱晃/卡顿
+    // 每次mousemove都更新鼠标坐标，确保高亮跟随鼠标位置
+    const prevHover = this._hoverCell;
+    this._hoverCell = next;
+    this._mouseX = x; this._mouseY = y;
 
-    const cur = this._hoverCell;
-
-    if ((cur === null) !== (next === null)
-
-        || (cur && next && (cur.row !== next.row || cur.col !== next.col))) {
-
-      this._hoverCell = next;
-
+    // 只要格子变化就触发表单重绘（保证高亮框跟随）
+    if (prevHover !== next) {
       if (!this._hoverRaf) {
-
         this._hoverRaf = requestAnimationFrame(() => {
-
           this._hoverRaf = null;
-
           this.render();
-
         });
-
       }
-
     }
-
   },
 
 
