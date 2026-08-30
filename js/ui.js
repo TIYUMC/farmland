@@ -416,8 +416,6 @@ const UI = {
 
     this.canvas = document.getElementById('game-canvas');
 
-    this.canvas.style.outline = '2px solid red'; // DEBUG: canvas边界
-    this._debugTest = true; // 调试：每帧画红色测试块
     this.ctx = this.canvas.getContext('2d');
 
     this._resize();
@@ -717,14 +715,6 @@ const UI = {
     const ctx = this.ctx;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);   // 每帧从单位矩阵开始，消除任何残留 translate 累积导致的抖动画面
-    // 调试：每帧画一个红色方块在左上角，确认渲染正常
-    if (this._debugTest) {
-      ctx.fillStyle = 'rgba(255,0,0,0.5)';
-      ctx.fillRect(10, 10, 50, 50);
-      ctx.fillStyle = '#fff';
-      ctx.font = '10px monospace';
-      ctx.fillText('DEBUG TEST', 12, 40);
-    }
 
     const cs = this.cellSize;
 
@@ -4516,37 +4506,6 @@ const UI = {
 
     // 注：树桩(stump)阶段已移除——砍树后 trees[r][c]=null 直接消失，不再渲染桩（用户「树桩去掉」）。
 
-    // ── 调试叠加层：点击一次后永久显示，用于对比鼠标视觉位置与实际格子 ──
-    if (!this._debugLock) {
-      // 点击区域任意一处即激活，之后锁定不消失
-      if (this._mouseX > 0 || this._hoverCell) this._debugLock = true;
-    }
-    if (this._debugLock) {
-      const cs = this.cellSize;
-      const hr = this._hoverCell ? this._hoverCell.row : -1;
-      const hc = this._hoverCell ? this._hoverCell.col : -1;
-      // 半透明背景
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(4, 4, 220, 90);
-      // 坐标信息
-      ctx.fillStyle = '#0f0';
-      ctx.font = '11px monospace';
-      ctx.fillText(`mouse: ${this._mouseX.toFixed(0)},${this._mouseY.toFixed(0)}`, 10, 20);
-      ctx.fillText(`cell: ${hr},${hc}`, 10, 36);
-      ctx.fillText(`cs=${cs} x=${hc*cs} y=${hr*cs}`, 10, 52);
-      const r = this.canvas.getBoundingClientRect();
-      ctx.fillText(`rect: ${r.x.toFixed(0)},${r.y.toFixed(0)} ${r.width.toFixed(0)}x${r.height.toFixed(0)}`, 10, 68);
-      // 十字准星
-      ctx.strokeStyle = 'rgba(255,0,0,0.6)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(this._mouseX, 0);
-      ctx.lineTo(this._mouseX, this.canvas.height);
-      ctx.moveTo(0, this._mouseY);
-      ctx.lineTo(this.canvas.width, this._mouseY);
-      ctx.stroke();
-    }
-
   },
 
 
@@ -4794,12 +4753,6 @@ const UI = {
     if (this._shopOpen) { this._onShopMove(e); return; }
 
     if (this._busy) return; // 正在干活中，悬停高亮冻结在当前地块，不跟随鼠标
-    // DEBUG: 更新DOM调试覆盖层
-    const dbg = document.getElementById('debug-overlay');
-    if (dbg) {
-      dbg.style.display = 'block';
-      dbg.textContent = `mouse: ${x.toFixed(0)},${y.toFixed(0)} | cell: ${next ? next.row + "," + next.col : "-1,-1"} | rect: ${this.canvas.getBoundingClientRect().toJSON()}`;
-    }
 
     const { x, y } = this._eventToCanvas(e);
 

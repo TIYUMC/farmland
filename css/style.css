@@ -1301,9 +1301,3 @@ body {
   }
 }
 
-
-/* debug: 调试叠加层，显示canvas边界 */
-.debug-canvas-border {
-  outline: 2px solid red !important;
-  outline-offset: 0;
-}
