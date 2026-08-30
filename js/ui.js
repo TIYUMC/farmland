@@ -416,6 +416,7 @@ const UI = {
 
     this.canvas = document.getElementById('game-canvas');
 
+    this.canvas.style.outline = '2px solid red'; // DEBUG: canvas边界
     this.ctx = this.canvas.getContext('2d');
 
     this._resize();
@@ -4506,23 +4507,28 @@ const UI = {
 
     // 注：树桩(stump)阶段已移除——砍树后 trees[r][c]=null 直接消失，不再渲染桩（用户「树桩去掉」）。
 
-    // ── 调试叠加层：显示鼠标坐标和格子位置 ──
-    if (this._hoverCell && this._mouseX > 0 && this._mouseY > 0) {
+    // ── 调试叠加层：点击一次后永久显示，用于对比鼠标视觉位置与实际格子 ──
+    if (!this._debugLock) {
+      // 点击区域任意一处即激活，之后锁定不消失
+      if (this._mouseX > 0 || this._hoverCell) this._debugLock = true;
+    }
+    if (this._debugLock) {
       const cs = this.cellSize;
-      const { row: hr, col: hc } = this._hoverCell;
+      const hr = this._hoverCell ? this._hoverCell.row : -1;
+      const hc = this._hoverCell ? this._hoverCell.col : -1;
       // 半透明背景
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(4, 4, 210, 80);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(4, 4, 220, 90);
       // 坐标信息
       ctx.fillStyle = '#0f0';
-      ctx.font = '10px monospace';
-      ctx.fillText(`mouse: ${this._mouseX.toFixed(0)},${this._mouseY.toFixed(0)}`, 10, 18);
-      ctx.fillText(`cell: ${hr},${hc}`, 10, 32);
-      ctx.fillText(`cs=${cs} x=${hc*cs} y=${hr*cs}`, 10, 46);
-      ctx.fillText(`rect: ${this.canvas.getBoundingClientRect().x.toFixed(0)},${this.canvas.getBoundingClientRect().y.toFixed(0)}`, 10, 60);
-      ctx.fillText('client: ?', 10, 74);
+      ctx.font = '11px monospace';
+      ctx.fillText(`mouse: ${this._mouseX.toFixed(0)},${this._mouseY.toFixed(0)}`, 10, 20);
+      ctx.fillText(`cell: ${hr},${hc}`, 10, 36);
+      ctx.fillText(`cs=${cs} x=${hc*cs} y=${hr*cs}`, 10, 52);
+      const r = this.canvas.getBoundingClientRect();
+      ctx.fillText(`rect: ${r.x.toFixed(0)},${r.y.toFixed(0)} ${r.width.toFixed(0)}x${r.height.toFixed(0)}`, 10, 68);
       // 十字准星
-      ctx.strokeStyle = 'rgba(255,0,0,0.5)';
+      ctx.strokeStyle = 'rgba(255,0,0,0.6)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(this._mouseX, 0);
