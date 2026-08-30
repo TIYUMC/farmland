@@ -26,7 +26,14 @@ const Player = {
   questsDone: {},
 
   // 资源：橡果（砍树掉落 1~3 个，可在树场种回；形成「砍树→得橡果→种树场→再砍」循环）
-  acorns: 0,
+  // 实际存量存 inventory['acorn']，此处用 getter/setter 承接历史调用点（addAcorns/hasAcorn/useAcorn/quest 等）
+  get acorns() { return (this.inventory && this.inventory['acorn']) || 0; },
+  set acorns(v) {
+    if (!this.inventory) this.inventory = {};
+    const n = Math.max(0, Math.floor(v || 0));
+    if (n > 0) this.inventory['acorn'] = n;
+    else delete this.inventory['acorn'];
+  },
 
   // 已拥有工具：木斧头需先在商店购买（20 金锭 + 5 小麦），未购买则无法装备/砍树。
   // 注意：锄头/水桶开局即拥有，不在此登记。
@@ -179,6 +186,8 @@ const Player = {
     };
     for (const [cid, c] of Object.entries(this.inventory || {})) {
       if (!c || c <= 0) continue;
+      // 橡果已作为 tool 槽生成（见上方 toolMap），跳过避免背包里出现两格橡果
+      if (cid === 'acorn') continue;
       const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[cid] : null;
       if (!def) continue;
       pushStacks('crop:' + cid, def.assetHarvest, def.name);

@@ -110,8 +110,7 @@ UI._buildTrades = function() {
       output: { key: this._seedIconKey(cropId), label: item.name },
       canDo: Player.money >= def.seedCost,
     });
-    // 橡果不计入 inventory，单独存在 Player.acorns，卖行数量从那里读
-    const have = (cropId === 'acorn') ? (Player.acorns || 0) : (Player.inventory[cropId] || 0);
+    const have = Player.inventory[cropId] || 0;
     trades.push({
       id: 'sell_' + cropId, kind: 'sell', cropId,
       label: '卖' + def.name,
@@ -157,17 +156,13 @@ UI._executeTrade = function(t) {
       UI._renderBottomHotbar();    // 刷新底部 MC 快捷栏 DOM
       this._updateHeldSlot();
     } else if (t.kind === 'buy') {
-      if (t.cropId === 'acorn') {
-        Player.addAcorns(1);
-        Player._ensureToolInHotbar('acorn');
-      } else {
-        Player.addSeeds(t.cropId, 1);
-        Player._ensureSeedInHotbar(t.cropId);
-      }
+      // 与正常路径同源：按 growDays 判断入收获物背包还是种子背包
+      const bdef = DATA.CROPS[t.cropId];
+      if (bdef && !bdef.growDays) Player.addToInventory(t.cropId, 1);
+      else Player.addSeeds(t.cropId, 1);
       Player._rebuildInvSlots();
       UI._renderBottomHotbar();
     } else {
-      // 全卖（含橡果：存量在 Player.acorns，统一交给 Economy 处理）
       const r = Economy._resolveSellable(t.cropId);
       if (r.ok) Economy._applySale(t.cropId, r.count, r);
     }
