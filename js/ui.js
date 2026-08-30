@@ -5104,6 +5104,13 @@ const UI = {
 
     const { x, y } = this._eventToCanvas(e);
 
+    // DEBUG: 坐标映射日志，点击后在控制台查看实际行列与点击位置
+    console.log('[click]', 'x=' + x.toFixed(1) + ' y=' + y.toFixed(1),
+                '| rect=', this.canvas.getBoundingClientRect(),
+                '| client=', e.clientX, e.clientY,
+                '| cell=', Math.floor(x / this.cellSize), Math.floor(y / this.cellSize),
+                '| cs=', this.cellSize);
+
     this._mouseX = x; this._mouseY = y;
 
     // 商店打开时点击交给商店逻辑（含「点面板外关闭」）
