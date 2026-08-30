@@ -4794,6 +4794,12 @@ const UI = {
     if (this._shopOpen) { this._onShopMove(e); return; }
 
     if (this._busy) return; // 正在干活中，悬停高亮冻结在当前地块，不跟随鼠标
+    // DEBUG: 更新DOM调试覆盖层
+    const dbg = document.getElementById('debug-overlay');
+    if (dbg) {
+      dbg.style.display = 'block';
+      dbg.textContent = `mouse: ${x.toFixed(0)},${y.toFixed(0)} | cell: ${next ? next.row + "," + next.col : "-1,-1"} | rect: ${this.canvas.getBoundingClientRect().toJSON()}`;
+    }
 
     const { x, y } = this._eventToCanvas(e);
 
