@@ -4506,6 +4506,32 @@ const UI = {
 
     // 注：树桩(stump)阶段已移除——砍树后 trees[r][c]=null 直接消失，不再渲染桩（用户「树桩去掉」）。
 
+    // ── 调试叠加层：显示鼠标坐标和格子位置 ──
+    if (this._hoverCell && this._mouseX > 0 && this._mouseY > 0) {
+      const cs = this.cellSize;
+      const { row: hr, col: hc } = this._hoverCell;
+      // 半透明背景
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(4, 4, 210, 80);
+      // 坐标信息
+      ctx.fillStyle = '#0f0';
+      ctx.font = '10px monospace';
+      ctx.fillText(`mouse: ${this._mouseX.toFixed(0)},${this._mouseY.toFixed(0)}`, 10, 18);
+      ctx.fillText(`cell: ${hr},${hc}`, 10, 32);
+      ctx.fillText(`cs=${cs} x=${hc*cs} y=${hr*cs}`, 10, 46);
+      ctx.fillText(`rect: ${this.canvas.getBoundingClientRect().x.toFixed(0)},${this.canvas.getBoundingClientRect().y.toFixed(0)}`, 10, 60);
+      ctx.fillText(`client: ${e ? e.clientX.toFixed(0) : '?'},${e ? e.clientY.toFixed(0) : '?'}`, 10, 74);
+      // 十字准星
+      ctx.strokeStyle = 'rgba(255,0,0,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(this._mouseX, 0);
+      ctx.lineTo(this._mouseX, this.canvas.height);
+      ctx.moveTo(0, this._mouseY);
+      ctx.lineTo(this.canvas.width, this._mouseY);
+      ctx.stroke();
+    }
+
   },
 
 
