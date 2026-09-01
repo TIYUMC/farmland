@@ -3028,7 +3028,8 @@ const UI = {
       }
       const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
       const isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
-      if (!isBare && (gstate === 1 || gstate === 2)) {
+      // 修复：与 _renderTreeFarmScene 一致，所有非裸土格都画草方块（含 gstate=0 的普通草方块）
+      if (!isBare) {
         this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
       }
       return;
