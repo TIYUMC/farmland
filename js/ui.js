@@ -2940,7 +2940,7 @@ const UI = {
 
   _ensureFarmCache() {
 
-    const sig = `${Engine.year}-${Engine.season}-${Engine.day}@${this.canvas.width}x${this.canvas.height}`;
+    const sig = `${this.scene}-${Engine.year}-${Engine.season}-${Engine.day}@${this.canvas.width}x${this.canvas.height}`;
     const hasFarmDirty = this._farmCacheDirty.size > 0;
     const hasVegDirty = this._vegCacheDirty.size > 0;
 
