@@ -3027,10 +3027,8 @@ const UI = {
       } else {
         const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
         const isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
-        // 修复：与 _renderTreeFarmScene 一致，所有非裸土格都画草方块（含 gstate=0 的普通草方块）
-        if (!isBare) {
-          this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
-        }
+        // 修复：与 _renderTreeFarmScene 一致，无论裸土还是草都画（isBare=true 时会调用 _drawBareSoil）
+        this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
       }
       // 网格线：与 _renderTreeFarmScene 一致，无条件绘制
       ctx.strokeStyle = 'rgba(0,0,0,0.10)';
