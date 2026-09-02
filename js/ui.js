@@ -2370,7 +2370,7 @@ const UI = {
 
       if (wasEmpty && occupied >= 40) continue;                  // 总共至多 40 个格有落叶（R78 ×4，新格受限）
 
-      grid[nr][nc]++;
+          grid[nr][nc]++;
 
       if (wasEmpty) occupied++;
 
@@ -2378,6 +2378,8 @@ const UI = {
 
     }
 
+    // 落叶变化后标记农场缓存脏，触发重绘
+    this.markFarmDirty();
   },
 
 
@@ -3017,21 +3019,23 @@ const UI = {
         // 防止农场缓存中残留的旧草色从树下方透出形成纯绿方块。
         this._drawGrassGroundCell(ctx, r, c, x, y, cs, 0, true, colors);
         this._drawTreeEntity(ctx, x, y, cs, TreeFarm.trees[r][c]);
-        return;
-      }
-      // 锄头翻出的缠根泥土：先铺土色底 + 贴 rooted_dirt
-      if (TreeFarm.getRootedAt(r, c)) {
+      } else if (TreeFarm.getRootedAt(r, c)) {
+        // 锄头翻出的缠根泥土：先铺土色底 + 贴 rooted_dirt
         this._fillCell(ctx, x, y, cs, colors.soil);
         this._drawPaddedAsset(ctx, 'rooted_dirt', x, y, cs, 1, true)
           || this._fillCell(ctx, x, y, cs, colors.soil);
-        return;
+      } else {
+        const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
+        const isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
+        // 修复：与 _renderTreeFarmScene 一致，所有非裸土格都画草方块（含 gstate=0 的普通草方块）
+        if (!isBare) {
+          this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
+        }
       }
-      const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
-      const isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
-      // 修复：与 _renderTreeFarmScene 一致，所有非裸土格都画草方块（含 gstate=0 的普通草方块）
-      if (!isBare) {
-        this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
-      }
+      // 网格线：与 _renderTreeFarmScene 一致，无条件绘制
+      ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, cs, cs);
       return;
     }
     
