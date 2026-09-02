@@ -789,11 +789,28 @@ const UI = {
         const cs = this.cellSize;
         const sctx = this._farmCache.getContext('2d');
         const colors = this._seasonColorAt();
+        // 第一遍：重绘地面（草/泥土/缠根泥土），不含树
         for (const key of this._farmCacheDirty) {
           const [r, c] = key.split(',').map(Number);
           const x = c * cs, y = r * cs;
           sctx.clearRect(x, y, cs, cs);
           this._renderCell(sctx, r, c, x, y, cs, colors);
+        }
+        // 第二遍：重绘树（确保树在地面之上，与全量渲染顺序一致）
+        if (this.scene === 'treeFarm') {
+          for (const key of this._farmCacheDirty) {
+            const [r, c] = key.split(',').map(Number);
+            const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
+            if (t) {
+              const x = c * cs, y = r * cs;
+              this._drawTreeEntity(sctx, x, y, cs, t);
+            }
+          }
+        }
+        // 将更新后的区域贴回主画布
+        for (const key of this._farmCacheDirty) {
+          const [r, c] = key.split(',').map(Number);
+          const x = c * cs, y = r * cs;
           ctx.drawImage(this._farmCache, x, y, cs, cs, x, y, cs, cs);
         }
         this._farmCacheDirty.clear();
@@ -2974,19 +2991,37 @@ const UI = {
     const colors = this._seasonColorAt();
     
     // 重绘 farmCache 中的脏格
+    const dirtyCells = [];
     for (const key of this._farmCacheDirty) {
       const [r, c] = key.split(',').map(Number);
-      const x = c * cs, y = r * cs;
-      sctx.clearRect(x, y, cs, cs);
-      this._renderCell(sctx, r, c, x, y, cs, colors);
-      // 存储到缓存
-      if (!this._farmCacheEntries[key]) {
-        this._farmCacheEntries[key] = document.createElement('canvas');
+      dirtyCells.push({ r, c });
+    }
+    if (dirtyCells.length > 0) {
+      // 第一遍：重绘地面（草/泥土/缠根泥土）
+      for (const { r, c } of dirtyCells) {
+        const x = c * cs, y = r * cs;
+        sctx.clearRect(x, y, cs, cs);
+        this._renderCell(sctx, r, c, x, y, cs, colors);
       }
-      this._farmCacheEntries[key].width = cs;
-      this._farmCacheEntries[key].height = cs;
-      this._farmCacheEntries[key].getContext('2d').drawImage(sctx.canvas, x, y, cs, cs, 0, 0, cs, cs);
-      this._farmCacheDirty.delete(key);
+      // 第二遍：重绘树（确保树在地面之上）
+      for (const { r, c } of dirtyCells) {
+        const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
+        if (t) {
+          const x = c * cs, y = r * cs;
+          this._drawTreeEntity(sctx, x, y, cs, t);
+        }
+      }
+      // 将更新后的区域贴回主画布
+      for (const { r, c } of dirtyCells) {
+        const x = c * cs, y = r * cs;
+        ctx.drawImage(this._farmCache, x, y, cs, cs, x, y, cs, cs);
+        this._farmCacheDirty.delete(r + "," + c);
+      }
+      // 同时失效相邻的脏格（树冠溢出）
+      for (const { r, c } of dirtyCells) {
+        if (r > 0) { this._farmCacheDirty.delete((r - 1) + "," + c); }
+        if (r > 1) { this._farmCacheDirty.delete((r - 2) + "," + c); }
+      }
     }
     
     // 重绘 vegCache 中的脏格（仅在有积雪时）
@@ -3016,28 +3051,25 @@ const UI = {
       || (Farm.grid[r] && Farm.grid[r][c]);
     
     if (this.scene === 'treeFarm') {
-      // 树场：只画草、树和缠根泥土
+      // 树场：只画草、缠根泥土，不画树（树由 _renderTreeFarmScene 最后统一画）
       const hasTree = !!(TreeFarm.trees[r] && TreeFarm.trees[r][c]);
-      if (hasTree) {
-        // 先铺裸土底（与 _renderTreeFarmScene 一致：有树/树苗的格不画草，露出裸土），
-        // 防止农场缓存中残留的旧草色从树下方透出形成纯绿方块。
-        this._drawGrassGroundCell(ctx, r, c, x, y, cs, 0, true, colors);
-        this._drawTreeEntity(ctx, x, y, cs, TreeFarm.trees[r][c]);
-      } else if (TreeFarm.getRootedAt(r, c)) {
-        // 锄头翻出的缠根泥土：先铺土色底 + 贴 rooted_dirt
-        this._fillCell(ctx, x, y, cs, colors.soil);
-        this._drawPaddedAsset(ctx, 'rooted_dirt', x, y, cs, 1, true)
-          || this._fillCell(ctx, x, y, cs, colors.soil);
-      } else {
-        const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
-        const isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
-        // 修复：与 _renderTreeFarmScene 一致，无论裸土还是草都画（isBare=true 时会调用 _drawBareSoil）
-        this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
+      if (!hasTree) {
+        if (TreeFarm.getRootedAt(r, c)) {
+          // 锄头翻出的缠根泥土：先铺土色底 + 贴 rooted_dirt
+          this._fillCell(ctx, x, y, cs, colors.soil);
+          this._drawPaddedAsset(ctx, 'rooted_dirt', x, y, cs, 1, true)
+            || this._fillCell(ctx, x, y, cs, colors.soil);
+        } else {
+          const gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
+          const isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
+          // 无论裸土还是草都画（isBare=true 时会调用 _drawBareSoil）
+          this._drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors);
+        }
+        // 网格线
+        ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, cs, cs);
       }
-      // 网格线：与 _renderTreeFarmScene 一致，无条件绘制
-      ctx.strokeStyle = 'rgba(0,0,0,0.10)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, y, cs, cs);
       return;
     }
     
