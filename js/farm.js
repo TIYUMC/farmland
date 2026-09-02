@@ -500,6 +500,7 @@ function grassStep(self) {
         if (Math.random() < grow) {
           self.grass[r][c] = 1;   // 长成绿草
           self.bare[r][c] = false; // 重新长草 → 不再是裸土
+          self.flowers[r][c] = 0; // 草覆盖花朵 → 清除花朵（草与花互斥）
         }
       } else if (prev[r][c] === 2) {
         // 黄草(枯草)：① 可能重生为绿草；② 可能退化为草方块。两者皆掷，若同格同时命中→保持不变。
@@ -518,6 +519,7 @@ function grassStep(self) {
           // 同时经历枯萎与生长 → 保持不变（仍是黄草）
         } else if (doRegrow) {
           self.grass[r][c] = 1;   // 枯草重生为绿草
+          self.flowers[r][c] = 0; // 草覆盖花朵 → 清除花朵（草与花互斥）
         } else if (doDecay) {
           self.grass[r][c] = 0;   // 黄草退化成草方块(无草)
           self.bare[r][c] = false; // 关键：此时不是土，只是无草草方块(草方块底纹)
