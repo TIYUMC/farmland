@@ -41,9 +41,10 @@
     };
 
     Engine.onNewDay = (day, season, year) => {
+      // 先标记脏格，确保下一帧渲染时重建缓存（季节变化、落叶堆更新都需要）
+      UI.markFarmDirty();
       // 结算（继续按钮）已处理了农活更新，这里只需渲染
       UI.render();
-      UI.markFarmDirty(); // 跨天后季节可能变化，重建静态层以更新秋日落叶堆
       // 跨天若仍下雨，重新浇灌（Farm.resetWater 已清空当日 watered），让作物次日继续靠雨水生长；冬天是雪不浇
       if (typeof UI !== 'undefined' && UI.isRaining && UI._rainWaterFields && typeof UI._isWinter === 'function' && !UI._isWinter()) UI._rainWaterFields();
       // 跨天推进秋日落叶：每树3%概率、每天≤2格、总计≤10格（非秋季自动清空）
