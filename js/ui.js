@@ -839,7 +839,7 @@ const UI = {
 
     // 植被层（草 + 花朵）：在积雪层之后贴回，使草花显示在雪之上（雪只盖住地面/作物/树，草花从雪里探出）
 
-    if (this._snowTotal > 0 && this._vegCache) ctx.drawImage(this._vegCache, 0, 0);
+    if (this._vegCache) ctx.drawImage(this._vegCache, 0, 0);
 
 
 
