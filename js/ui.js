@@ -3024,13 +3024,13 @@ const UI = {
       }
     }
     
-    // 重绘 vegCache 中的脏格（仅在有积雪时）
-    if (this._vegCacheDirty.size > 0 && this._snowTotal > 0) {
+    // 重绘 vegCache 中的脏格（无论有无积雪都刷新，因为花朵/草叶都在这里）
+    if (this._vegCacheDirty.size > 0) {
       if (!this._vegCache) this._vegCache = document.createElement('canvas');
       const vctx = this._vegCache.getContext('2d');
       const cs = this.cellSize;
       const colors = this._seasonColorAt();
-      
+
       // 只需要重绘脏格区域
       for (const key of this._vegCacheDirty) {
         const [r, c] = key.split(',').map(Number);
@@ -3039,9 +3039,6 @@ const UI = {
         this._renderVegCell(vctx, r, c, x, y, cs, colors);
         this._vegCacheDirty.delete(key);
       }
-    } else if (this._vegCacheDirty.size > 0 && this._snowTotal === 0) {
-      // 无雪时 vegCache 不需要维护，清除脏标记
-      this._vegCacheDirty.clear();
     }
   },
 
