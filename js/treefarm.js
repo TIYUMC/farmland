@@ -49,12 +49,14 @@ const TreeFarm = {
     this.bare = [];
     this.dirt = [];
     this.grid = [];
+    this.flowers = [];  // 树场无花朵，但需初始化以满足 grassStep 的 self.flowers 访问
     for (let r = 0; r < this.ROWS; r++) {
       this.trees[r] = []; this.rooted[r] = [];
-      this.grass[r] = []; this.bare[r] = []; this.dirt[r] = []; this.grid[r] = [];
+      this.grass[r] = []; this.bare[r] = []; this.dirt[r] = []; this.grid[r] = []; this.flowers[r] = [];
       for (let c = 0; c < this.COLS; c++) {
         this.trees[r][c] = null; this.rooted[r][c] = false;
         this.bare[r][c] = false; this.dirt[r][c] = false; this.grid[r][c] = null;
+        this.flowers[r][c] = 0;  // 树场无花，恒为 0
         this.grass[r][c] = Math.random() < this.grassInitDensity ? 1 : 0; // 初始绿草（减半密度）
       }
     }

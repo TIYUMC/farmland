@@ -781,40 +781,9 @@ const UI = {
     ctx.fillRect(-8, -8, this.canvas.width + 16, this.canvas.height + 16);
 
     // 渲染农场静态层：有脏格时先整体贴回，再覆盖脏格；否则直接整体贴回
-    const hasFarmDirty = this._farmCacheDirty && this._farmCacheDirty.size > 0;
-    const hasVegDirty = this._vegCacheDirty && this._vegCacheDirty.size > 0;
     if (this._farmCache) {
+      console.log('[render] 绘制farmCache, 尺寸:', this._farmCache.width, 'x', this._farmCache.height, '脏格数:', this._farmCacheDirty.size);
       ctx.drawImage(this._farmCache, 0, 0);
-      if (hasFarmDirty) {
-        const cs = this.cellSize;
-        const sctx = this._farmCache.getContext('2d');
-        const colors = this._seasonColorAt();
-        // 第一遍：重绘地面（草/泥土/缠根泥土），不含树
-        for (const key of this._farmCacheDirty) {
-          const [r, c] = key.split(',').map(Number);
-          const x = c * cs, y = r * cs;
-          sctx.clearRect(x, y, cs, cs);
-          this._renderCell(sctx, r, c, x, y, cs, colors);
-        }
-        // 第二遍：重绘树（确保树在地面之上，与全量渲染顺序一致）
-        if (this.scene === 'treeFarm') {
-          for (const key of this._farmCacheDirty) {
-            const [r, c] = key.split(',').map(Number);
-            const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
-            if (t) {
-              const x = c * cs, y = r * cs;
-              this._drawTreeEntity(sctx, x, y, cs, t);
-            }
-          }
-        }
-        // 将更新后的区域贴回主画布
-        for (const key of this._farmCacheDirty) {
-          const [r, c] = key.split(',').map(Number);
-          const x = c * cs, y = r * cs;
-          ctx.drawImage(this._farmCache, x, y, cs, cs, x, y, cs, cs);
-        }
-        this._farmCacheDirty.clear();
-      }
     }
 
 
@@ -838,8 +807,12 @@ const UI = {
 
 
     // 植被层（草 + 花朵）：在积雪层之后贴回，使草花显示在雪之上（雪只盖住地面/作物/树，草花从雪里探出）
-
-    if (this._vegCache) ctx.drawImage(this._vegCache, 0, 0);
+    if (this._vegCache) {
+      console.log('[render] 绘制vegCache, 尺寸:', this._vegCache.width, 'x', this._vegCache.height);
+      ctx.drawImage(this._vegCache, 0, 0);
+    } else {
+      console.log('[render] vegCache不存在，跳过绘制');
+    }
 
 
 
@@ -2715,6 +2688,8 @@ const UI = {
    *  用于点击操作后只更新变化的格子，避免重建全部120格。 */
   _invalidateCell(row, col) {
     const key = row + "," + col;
+    console.log('[invalidateCell] 准备失效:', key, 'farmDirty前:', this._farmCacheDirty.size, 'vegDirty前:', this._vegCacheDirty.size);
+
     this._farmCacheDirty.add(key);
     // 树场：树冠高 cs*1.5，向上溢出约 1.5 格到上两行，需同步失效以上两行，
     // 否则旧草色/树会从树冠上方残留形成绿方块闪屏。
@@ -2726,13 +2701,14 @@ const UI = {
         this._farmCacheDirty.add((row - 2) + "," + col);
       }
     }
-    // 草格和花朵需要同时使 vegCache 失效
-    const grassSrc = (this.scene === "treeFarm") ? TreeFarm : Farm;
-    const gstate = (grassSrc.grass && grassSrc.grass[row]) ? (grassSrc.grass[row][col] || 0) : 0;
-    const flower = (grassSrc.flowers && grassSrc.flowers[row]) ? (grassSrc.flowers[row][col] || 0) : 0;
-    if (gstate === 1 || gstate === 2 || flower > 0) {
-      this._vegCacheDirty.add(key);
-    }
+    // 任何格子操作都可能改变植被状态，无条件失效 vegCache
+    this._vegCacheDirty.add(key);
+    // 同时失效 grassBaseCache：除草/种树等操作改变了地面状态，旧的草底缓存已过期
+    this._grassBaseCache = null;
+    // ★ 关键：必须设 _farmDirty=true，强制下一帧全量重建，否则 _grassBaseCache 永远是 null
+    this._farmDirty = true;
+
+    console.log('[invalidateCell] 失效后: farmDirty=', this._farmCacheDirty.size, 'vegDirty=', this._vegCacheDirty.size, 'scene=', this.scene);
   },
 
 
@@ -2962,23 +2938,24 @@ const UI = {
   /** 保证静态农场层离屏画布为最新；过期则重建 */
 
   _ensureFarmCache() {
-
     const sig = `${this.scene}-${Engine.year}-${Engine.season}-${Engine.day}@${this.canvas.width}x${this.canvas.height}`;
     const hasFarmDirty = this._farmCacheDirty.size > 0;
     const hasVegDirty = this._vegCacheDirty.size > 0;
+    console.log('[ensureFarmCache] sig=', sig, 'hasFarmDirty=', hasFarmDirty, 'hasVegDirty=', hasVegDirty, 'farmDirtyFlag=', this._farmDirty);
 
     // 全量重建条件：缓存不存在 / 季节日变化 / 全量标记 / 格数变化
     const needFullRebuild = !this._farmCache || this._farmCacheKey !== sig || this._farmDirty;
-    
-    // 局部更新：只重绘脏格
+
     if (needFullRebuild) {
+      console.log('[ensureFarmCache] 执行全量重建');
       this._rebuildFarmCache();
       this._farmCacheDirty.clear();
       this._vegCacheDirty.clear();
     } else if (hasFarmDirty || hasVegDirty) {
+      console.log('[ensureFarmCache] 执行增量更新, farmDirtyKeys=[', Array.from(this._farmCacheDirty).join(','), '], vegDirtyKeys=[', Array.from(this._vegCacheDirty).join(','), ']');
       this._refreshDirtyCells();
     }
-    
+
     this._farmCacheKey = sig;
     this._farmDirty = false;
   },
@@ -2989,56 +2966,61 @@ const UI = {
     const sctx = this._farmCache.getContext('2d');
     const cs = this.cellSize;
     const colors = this._seasonColorAt();
-    
+
     // 重绘 farmCache 中的脏格
     const dirtyCells = [];
     for (const key of this._farmCacheDirty) {
       const [r, c] = key.split(',').map(Number);
       dirtyCells.push({ r, c });
     }
+    console.log('[refreshDirtyCells] farm脏格数:', dirtyCells.length);
     if (dirtyCells.length > 0) {
+      console.log('[refreshDirtyCells] farm脏格详情:', dirtyCells.map(d => `${d.r},${d.c}`).join(', '));
       // 第一遍：重绘地面（草/泥土/缠根泥土）
       for (const { r, c } of dirtyCells) {
         const x = c * cs, y = r * cs;
+        console.log('[refreshDirtyCells] 重绘farm格:', r, c, 'x=', x, 'y=', y, 'grid=', Farm.grid[r] && Farm.grid[r][c], 'grass=', Farm.grass && Farm.grass[r] && Farm.grass[r][c]);
         sctx.clearRect(x, y, cs, cs);
         this._renderCell(sctx, r, c, x, y, cs, colors);
       }
-      // 第二遍：重绘树（确保树在地面之上）
-      for (const { r, c } of dirtyCells) {
-        const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
-        if (t) {
-          const x = c * cs, y = r * cs;
-          this._drawTreeEntity(sctx, x, y, cs, t);
+      // 第二遍：重绘树（确保树在地面之上）——仅在树场场景
+      if (this.scene === 'treeFarm') {
+        for (const { r, c } of dirtyCells) {
+          const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
+          if (t) {
+            const x = c * cs, y = r * cs;
+            this._drawTreeEntity(sctx, x, y, cs, t);
+          }
         }
       }
-      // 将更新后的区域贴回主画布
-      for (const { r, c } of dirtyCells) {
-        const x = c * cs, y = r * cs;
-        ctx.drawImage(this._farmCache, x, y, cs, cs, x, y, cs, cs);
-        this._farmCacheDirty.delete(r + "," + c);
-      }
-      // 同时失效相邻的脏格（树冠溢出）
-      for (const { r, c } of dirtyCells) {
-        if (r > 0) { this._farmCacheDirty.delete((r - 1) + "," + c); }
-        if (r > 1) { this._farmCacheDirty.delete((r - 2) + "," + c); }
-      }
     }
-    
+    this._farmCacheDirty.clear();
+
     // 重绘 vegCache 中的脏格（无论有无积雪都刷新，因为花朵/草叶都在这里）
     if (this._vegCacheDirty.size > 0) {
+      console.log('[refreshDirtyCells] veg脏格数:', this._vegCacheDirty.size);
+      // 确保 vegCache 尺寸正确（与 _buildVegCache 保持一致）
       if (!this._vegCache) this._vegCache = document.createElement('canvas');
-      const vctx = this._vegCache.getContext('2d');
+      const cv = this._vegCache;
+      if (cv.width !== this.canvas.width || cv.height !== this.canvas.height) {
+        cv.width = this.canvas.width;
+        cv.height = this.canvas.height;
+      }
+      console.log('[refreshDirtyCells] vegCache尺寸:', cv.width, 'x', cv.height, 'canvas尺寸:', this.canvas.width, 'x', this.canvas.height);
+      const vctx = cv.getContext('2d');
       const cs = this.cellSize;
       const colors = this._seasonColorAt();
 
-      // 只需要重绘脏格区域
+      // 只需要重绘脏格区域（不清空整个画布，只clear脏格）
       for (const key of this._vegCacheDirty) {
         const [r, c] = key.split(',').map(Number);
         const x = c * cs, y = r * cs;
-        vctx.clearRect(x, y, cs, cs);
+        console.log('[refreshDirtyCells] 重绘veg格:', key, 'grid[r][c]=', Farm.grid[r] && Farm.grid[r][c], 'grass=', Farm.grass && Farm.grass[r] && Farm.grass[r][c], 'flowers=', Farm.flowers && Farm.flowers[r] && Farm.flowers[r][c]);
+        vctx.clearRect(x, y, cs, cs);  // 只clear当前脏格
         this._renderVegCell(vctx, r, c, x, y, cs, colors);
         this._vegCacheDirty.delete(key);
       }
+      console.log('[refreshDirtyCells] veg重绘完成，脏格数:', this._vegCacheDirty.size);
     }
   },
 
@@ -3165,6 +3147,8 @@ const UI = {
     this._rebuildGrassBase();   // 草格底随静态层一起重建（同失效触发：跨天换季/尺寸/农场变化），保证缓存与静态层像素一致
 
     this._buildVegCache();      // 草+花离屏缓存：与 _farmCache 同失效触发，render() 中于积雪层之后贴回（草花在雪之上）
+
+    this._shakeSnowBaseCache = null;  // 地面状态变化→含雪底缓存失效，下次草颤懒重建时用新底
 
   },
 
@@ -4846,7 +4830,11 @@ const UI = {
 
     const isOk = (opts && opts.isOk) || ((r) => r === 'ok');
 
-    if (isOk(res) && onOk) onOk(res);
+    console.log('[_actionEffect] row=', row, 'col=', col, 'res=', res, 'isOk=', isOk(res), 'hasOnOk=', !!onOk);
+    if (isOk(res) && onOk) {
+      console.log('[_actionEffect] calling onOk callback');
+      onOk(res);
+    }
 
     return res;
 
@@ -5195,6 +5183,8 @@ const UI = {
 
         this._handleHoeClick(row, col);
 
+        this.render();
+
         return;
 
 
@@ -5270,7 +5260,7 @@ const UI = {
    *  全程走 _tryAction 体力事务；每种失败分支各回各的提示，互不影响。 */
 
   _handleHoeClick(row, col) {
-
+    console.log('[_handleHoeClick] 开始 row=', row, 'col=', col, 'scene=', this.scene);
     const cell = (Farm.grid[row] && Farm.grid[row][col]) || null;
 
     // 成熟的作物：锄头点击即可收割（无需单独的「收获」工具）
@@ -5560,6 +5550,7 @@ const UI = {
    *  设计点：被操作的对象（作物/树/地块）在进度条 80% 时才真正变化，而非点击瞬间。 */
 
   _startBusy(label, iconKey, onEffect, onDone) {
+    console.log('[startBusy] 开始 label=', label, 'onEffect=', typeof onEffect, 'onDone=', typeof onDone);
 
     const BUSY_ICONS = {
 
@@ -5616,14 +5607,14 @@ const UI = {
     clearTimeout(this._busyEffectTimer);
 
     // 80%：触发真正的世界改动
-
+    console.log('[startBusy] 80% 定时器设置, dur=', dur, 'EFFECT_AT=', EFFECT_AT, '触发时间=', dur * EFFECT_AT);
     this._busyEffectTimer = setTimeout(() => {
-
+      console.log('[startBusy] 80% 触发！onEffect=', typeof onEffect);
       const res = onEffect ? onEffect() : 'ok';
-
+      console.log('[startBusy] onEffect返回:', res, 'result=', this._busyEffectResult);
       this._busyEffectResult = res;
-
       const ok = res === 'ok' || !!(res && res.ok);
+      console.log('[startBusy] ok=', ok);
 
       if (!ok) { // 失败：立刻结束并显示失败提示（不撑满整条）
 
@@ -5662,6 +5653,9 @@ const UI = {
     ind.classList.remove('busy-visible');
 
     ind.classList.add('busy-hidden');
+
+    // 动作完成后触发重绘，确保脏格被刷新到画布
+    this.render();
 
   },
 
