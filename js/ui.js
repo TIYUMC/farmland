@@ -3023,43 +3023,13 @@ const UI = {
       console.log('[refreshDirtyCells] veg重绘完成，脏格数:', this._vegCacheDirty.size);
     }
 
-    // 增量更新 _grassBaseCache：仅重绘有变化的格子
-    if (this._grassBaseCache === null && dirtyCells.length > 0) {
-      // 如果 _grassBaseCache 为 null，需要重建受影响的格子
-      console.log('[refreshDirtyCells] 重建受影响的 grassBaseCache 格子');
-      const cs = this.cellSize;
-      const colors = this._seasonColorAt();
-      const grassSrc = (this.scene === 'treeFarm') ? TreeFarm : Farm;
-
-      for (const { r, c } of dirtyCells) {
-        const gstate = (grassSrc.grass && grassSrc.grass[r]) ? (grassSrc.grass[r][c] || 0) : 0;
-        const isBare = !!(grassSrc.bare && grassSrc.bare[r] && grassSrc.bare[r][c]);
-
-        if (gstate === 0 && !isBare) {
-          // 非草非裸土，清除缓存
-          if (this._grassBaseCache) {
-            delete this._grassBaseCache[r + ',' + c];
-          }
-          continue;
-        }
-
-        const cv = document.createElement('canvas');
-        cv.width = cs; cv.height = cs;
-        const bctx = cv.getContext('2d');
-        let top = false;
-
-        if (isBare) {
-          this._drawBareSoil(bctx, r, c, 0, 0, cs, colors);
-        } else {
-          const hasBlock = this._drawGrassBaseLayer(bctx, r, c, 0, 0, cs, colors);
-          top = hasBlock && (gstate === 1 || gstate === 2);
-        }
-
-        if (!this._grassBaseCache) {
-          this._grassBaseCache = {};
-        }
-        this._grassBaseCache[r + ',' + c] = { cv, top };
-      }
+    // _grassBaseCache 失效（在 _invalidateCell 里被置 null）时必须**完整**重建，不能只重建脏格。
+    // 只建脏格会让缓存变成稀疏对象：脏格走「预渲染底 + 摆动顶层」，其余草格走「实时兜底」，
+    // 两条路径画法不同 → 被点击的那一格视觉与周围不一致，且不会自动恢复（单格异常色）。
+    // _rebuildGrassBase() 只重画草颤底缓存，不触碰 farmCache / vegCache，
+    // 因此不会像 _rebuildFarmCache() 那样引起整屏闪烁。
+    if (this._grassBaseCache === null) {
+      this._rebuildGrassBase();
     }
   },
 
