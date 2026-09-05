@@ -2705,8 +2705,8 @@ const UI = {
     this._vegCacheDirty.add(key);
     // 同时失效 grassBaseCache：除草/种树等操作改变了地面状态，旧的草底缓存已过期
     this._grassBaseCache = null;
-    // ★ 关键：必须设 _farmDirty=true，强制下一帧全量重建，否则 _grassBaseCache 永远是 null
-    this._farmDirty = true;
+    // 注意：不设置 _farmDirty=true，避免每次点击都触发全量重建（导致闪烁）
+    // _grassBaseCache 将在 _refreshDirtyCells 中增量更新
 
     console.log('[invalidateCell] 失效后: farmDirty=', this._farmCacheDirty.size, 'vegDirty=', this._vegCacheDirty.size, 'scene=', this.scene);
   },
@@ -3021,6 +3021,45 @@ const UI = {
         this._vegCacheDirty.delete(key);
       }
       console.log('[refreshDirtyCells] veg重绘完成，脏格数:', this._vegCacheDirty.size);
+    }
+
+    // 增量更新 _grassBaseCache：仅重绘有变化的格子
+    if (this._grassBaseCache === null && dirtyCells.length > 0) {
+      // 如果 _grassBaseCache 为 null，需要重建受影响的格子
+      console.log('[refreshDirtyCells] 重建受影响的 grassBaseCache 格子');
+      const cs = this.cellSize;
+      const colors = this._seasonColorAt();
+      const grassSrc = (this.scene === 'treeFarm') ? TreeFarm : Farm;
+
+      for (const { r, c } of dirtyCells) {
+        const gstate = (grassSrc.grass && grassSrc.grass[r]) ? (grassSrc.grass[r][c] || 0) : 0;
+        const isBare = !!(grassSrc.bare && grassSrc.bare[r] && grassSrc.bare[r][c]);
+
+        if (gstate === 0 && !isBare) {
+          // 非草非裸土，清除缓存
+          if (this._grassBaseCache) {
+            delete this._grassBaseCache[r + ',' + c];
+          }
+          continue;
+        }
+
+        const cv = document.createElement('canvas');
+        cv.width = cs; cv.height = cs;
+        const bctx = cv.getContext('2d');
+        let top = false;
+
+        if (isBare) {
+          this._drawBareSoil(bctx, r, c, 0, 0, cs, colors);
+        } else {
+          const hasBlock = this._drawGrassBaseLayer(bctx, r, c, 0, 0, cs, colors);
+          top = hasBlock && (gstate === 1 || gstate === 2);
+        }
+
+        if (!this._grassBaseCache) {
+          this._grassBaseCache = {};
+        }
+        this._grassBaseCache[r + ',' + c] = { cv, top };
+      }
     }
   },
 
