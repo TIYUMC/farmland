@@ -583,6 +583,7 @@ const UI = {
     this._vegCacheDirty = new Set();  // vegCache 需要重绘的格子集合
     this._grassBaseCache = null;      // 草格底缓存：预渲染草格底图，用于草颤动画
     this._farmCacheKey = '';          // 缓存签名，首次渲染时因 _farmCache=null 触发全量重建
+    this._farmDirty = false;          // 全量重建标志，确保首次渲染时正常重建缓存
 
 
 

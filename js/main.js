@@ -310,6 +310,8 @@
     _titleTransitionOut(function() {
       _hideTitle();
       SaveGame.load();
+      UI.markFarmDirty();
+      UI.render();
       UI._renderBottomHotbar();
     });
   }
