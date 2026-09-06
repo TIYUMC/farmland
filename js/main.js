@@ -301,6 +301,7 @@
       TreeFarm.init();
       Player.init();
       Engine.start();
+      UI.markFarmDirty();  // 强制重建缓存，清除旧存档的缓存数据
       UI.render();
       UI._renderBottomHotbar();
     });
