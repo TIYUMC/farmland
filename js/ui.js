@@ -4542,9 +4542,14 @@ const UI = {
 
     if (this._animRaf) return; // 防止重复启动
 
+    let frameCount = 0;
+
     const loop = () => {
 
       const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      frameCount++;
+
+      console.log('[FRAME]', frameCount, 't=', t0.toFixed(1), 'farmDirty=', this._farmDirty, 'farmCache=', this._farmCache ? 'has' : 'null');
 
       try { this.render(); } catch (err) { console.error('[render loop]', err); }
 

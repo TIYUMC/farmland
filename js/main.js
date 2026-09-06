@@ -312,13 +312,13 @@
       UI._vegCache = null;
       UI._grassBaseCache = null;
       UI._farmDirty = true;
-      console.log('[DEBUG] caches cleared, calling render()');
+      console.log('[DEBUG] caches cleared, calling render(), frame=', Date.now());
       // 先手动渲染第一帧，再启动动画循环
       UI.render();
-      console.log('[DEBUG] render() done, farmCache=', UI._farmCache ? 'has' : 'null');
+      console.log('[DEBUG] render() done, farmCache=', UI._farmCache ? 'has' : 'null', 'frame=', Date.now());
       UI._renderBottomHotbar();
       UI._startAnimLoop();
-      console.log('[DEBUG] anim loop started, _animRaf=', UI._animRaf);
+      console.log('[DEBUG] anim loop started, _animRaf=', UI._animRaf, 'frame=', Date.now());
     });
   }
   function _continueGame() {
