@@ -156,6 +156,9 @@ const Farm = {
     const f = this._flowerState(row, col);
     if (!this._isFlowerState(f)) return 'no_flower';
     this.flowers[row][col] = 0;
+    this.grass[row][col] = 0;       // 花被清除，回到无草状态
+    if (this.dirt[row]) this.dirt[row][col] = false; // 确保不是泥土
+    if (this.bare[row]) this.bare[row][col] = false; // 变回普通草方块（非裸土）
     return 'ok';
   },
   /** 读取某格花朵状态：0=无花, 1..N=花种编号（见 DATA.FLOWERS）。与 _grassState 同构。 */
