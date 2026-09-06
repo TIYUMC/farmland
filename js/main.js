@@ -299,20 +299,20 @@
       _hideTitle();
       // 停止动画循环，防止旧帧残留
       UI._stopAnimLoop();
-      // 清除所有缓存，强制重建
-      UI._farmCache = null;
-      UI._vegCache = null;
-      UI._grassBaseCache = null;
-      UI._farmDirty = true;
       // 重新初始化数据
       Farm.init();
       TreeFarm.init();
       Player.init();
       Engine.start();
-      // 重新启动动画循环并渲染
-      UI._startAnimLoop();
+      // 清除所有缓存，强制重建
+      UI._farmCache = null;
+      UI._vegCache = null;
+      UI._grassBaseCache = null;
+      UI._farmDirty = true;
+      // 先手动渲染第一帧，再启动动画循环
       UI.render();
       UI._renderBottomHotbar();
+      UI._startAnimLoop();
     });
   }
   function _continueGame() {
@@ -328,10 +328,10 @@
       UI._vegCache = null;
       UI._grassBaseCache = null;
       UI._farmDirty = true;
-      // 重新启动动画循环并渲染
-      UI._startAnimLoop();
+      // 先手动渲染第一帧，再启动动画循环
       UI.render();
       UI._renderBottomHotbar();
+      UI._startAnimLoop();
     });
   }
 
