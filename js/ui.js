@@ -507,7 +507,8 @@ const UI = {
 
     // 持续重绘循环：驱动未浇水作物的闪烁动画
 
-    this._startAnimLoop();
+    // 注意：不在 init() 中启动动画循环，避免标题屏幕时渲染旧数据
+    // 动画循环在游戏正式开始后才启动（_startNewGame / _continueGame）
 
 
 
