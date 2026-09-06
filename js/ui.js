@@ -100,6 +100,9 @@ const UI = {
 
   BUSY_SLOW_K: 2.5,    // 体力越低、耗时放大系数：0 体力时耗时 = 满体的 (1+K) = 3.5 倍
 
+  _animRaf: null,      // requestAnimationFrame 句柄，用于停止动画循环
+  _hoverRaf: null,     // 悬停动画帧句柄
+
 
 
   _hoverCell: null, // { row, col } | null
@@ -579,6 +582,7 @@ const UI = {
     this._snowTick = 0;               // 每游戏刻 +1
 
     this._vegCache = null;            // 植被离屏缓存（仅草+花），在积雪层之后贴回 → 草花显示在雪之上
+    this._farmCache = null;           // 静态农场层离屏缓存：首次为null确保全量重建
     this._farmCacheEntries = {};      // 单格缓存：{key: canvas} 缓存已渲染的单格
     this._farmCacheDirty = new Set(); // 需要重绘的格子集合
     this._vegCacheDirty = new Set();  // vegCache 需要重绘的格子集合
@@ -698,7 +702,12 @@ const UI = {
     this.canvas.style.marginLeft = '';
     this.canvas.style.marginTop = '';
 
-
+    // 尺寸变化→静态层失效，需重建
+    this._farmCache = null;
+    this._vegCache = null;
+    this._grassBaseCache = null;
+    this._farmCacheKey = '';
+    this._farmDirty = true;
 
     // 画布位置变了，商店 DOM 叠层需重新对齐
 
@@ -4549,8 +4558,6 @@ const UI = {
 
       const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
       frameCount++;
-
-      console.log('[FRAME]', frameCount, 't=', t0.toFixed(1), 'farmDirty=', this._farmDirty, 'farmCache=', this._farmCache ? 'has' : 'null');
 
       try { this.render(); } catch (err) { console.error('[render loop]', err); }
 

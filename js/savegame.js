@@ -66,8 +66,8 @@ const SaveGame = {
     this._deserialize(data);
     if (typeof UI !== 'undefined') {
       if (typeof UI.showStatus === 'function') UI.showStatus('读档成功！', 1000);
-      // 刷新游戏主场景（canvas）
-      if (typeof UI.render === 'function') UI.render();
+      // 注意：不在这里调用 UI.render()，避免在缓存清除前渲染旧数据
+      // 由调用方（main.js _continueGame）负责在清除缓存后渲染
       // 若背包打开则刷新背包面板
       if (UI._inventoryOpen && typeof UI.renderInventory === 'function') UI.renderInventory();
       // 若任务书打开则刷新任务书

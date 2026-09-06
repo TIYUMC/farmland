@@ -278,14 +278,14 @@
   function _addTitleTransition() {
     var ts = document.getElementById('title-screen');
     if (!ts) return;
-    ts.style.transition = 'opacity 0.5s ease-in';
+    ts.style.transition = 'opacity 1.2s ease-in';
     _titleTransitionOut = function(cb) {
       ts.style.opacity = '0';
       setTimeout(function() {
         ts.style.opacity = '';
         ts.style.transition = '';
         if (cb) cb();
-      }, 500);
+      }, 1200);
     };
   }
 
@@ -295,50 +295,41 @@
     _stopTitleParticles();
   }
   function _startNewGame() {
-    console.log('[DEBUG] _startNewGame called');
+    // 立即开始渲染（并行于标题淡出），避免黑屏等待
+    UI._stopAnimLoop();
+    Farm.init();
+    TreeFarm.init();
+    Player.init();
+    Engine.start();
+    UI._farmCache = null;
+    UI._vegCache = null;
+    UI._grassBaseCache = null;
+    UI._farmCacheKey = '';
+    UI._farmDirty = true;
+    UI.render();
+    UI._renderBottomHotbar();
+    UI._startAnimLoop();
+    // 标题淡出
     _titleTransitionOut(function() {
-      console.log('[DEBUG] transition done, starting new game');
       _hideTitle();
-      // 停止动画循环，防止旧帧残留
-      UI._stopAnimLoop();
-      console.log('[DEBUG] anim loop stopped, _animRaf=', UI._animRaf);
-      // 重新初始化数据
-      Farm.init();
-      TreeFarm.init();
-      Player.init();
-      Engine.start();
-      // 清除所有缓存，强制重建
-      UI._farmCache = null;
-      UI._vegCache = null;
-      UI._grassBaseCache = null;
-      UI._farmDirty = true;
-      console.log('[DEBUG] caches cleared, calling render(), frame=', Date.now());
-      // 先手动渲染第一帧，再启动动画循环
-      UI.render();
-      console.log('[DEBUG] render() done, farmCache=', UI._farmCache ? 'has' : 'null', 'frame=', Date.now());
-      UI._renderBottomHotbar();
-      UI._startAnimLoop();
-      console.log('[DEBUG] anim loop started, _animRaf=', UI._animRaf, 'frame=', Date.now());
     });
   }
   function _continueGame() {
     if (!SaveGame.hasSave()) return;
+    // 立即开始加载和渲染（并行于标题淡出）
+    UI._stopAnimLoop();
+    SaveGame.load();
+    UI._farmCache = null;
+    UI._vegCache = null;
+    UI._grassBaseCache = null;
+    UI._farmCacheKey = '';
+    UI._farmDirty = true;
+    UI.render();
+    UI._renderBottomHotbar();
+    UI._startAnimLoop();
+    // 标题淡出
     _titleTransitionOut(function() {
-      console.log('[DEBUG] _continueGame called');
       _hideTitle();
-      // 停止动画循环，防止旧帧残留
-      UI._stopAnimLoop();
-      // 加载存档
-      SaveGame.load();
-      // 清除所有缓存，强制重建
-      UI._farmCache = null;
-      UI._vegCache = null;
-      UI._grassBaseCache = null;
-      UI._farmDirty = true;
-      // 先手动渲染第一帧，再启动动画循环
-      UI.render();
-      UI._renderBottomHotbar();
-      UI._startAnimLoop();
     });
   }
 
