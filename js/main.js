@@ -301,7 +301,12 @@
       TreeFarm.init();
       Player.init();
       Engine.start();
-      UI.markFarmDirty();  // 强制重建缓存，清除旧存档的缓存数据
+      // 强制清除旧缓存，避免闪屏显示旧存档数据
+      UI._farmCache = null;
+      UI._vegCache = null;
+      UI._grassBaseCache = null;
+      UI._farmDirty = true;
+      UI.markFarmDirty();
       UI.render();
       UI._renderBottomHotbar();
     });
@@ -311,6 +316,11 @@
     _titleTransitionOut(function() {
       _hideTitle();
       SaveGame.load();
+      // 强制清除旧缓存，确保显示加载的存档数据
+      UI._farmCache = null;
+      UI._vegCache = null;
+      UI._grassBaseCache = null;
+      UI._farmDirty = true;
       UI.markFarmDirty();
       UI.render();
       UI._renderBottomHotbar();
