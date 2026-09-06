@@ -1,5 +1,5 @@
 /**
- * ui-ui-effects.js — 特效系统
+ * ui-effects.js — 特效系统
  * 从 ui.js 拆分出的模块
  */
 

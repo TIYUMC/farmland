@@ -1,5 +1,5 @@
 /**
- * ui-ui-weather.js — 天气系统
+ * ui-weather.js — 天气系统
  * 从 ui.js 拆分出的模块
  */
 

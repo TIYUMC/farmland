@@ -1,5 +1,5 @@
 /**
- * ui-ui-scene.js — 场景渲染系统
+ * ui-scene.js — 场景渲染系统
  * 从 ui.js 拆分出的模块
  */
 

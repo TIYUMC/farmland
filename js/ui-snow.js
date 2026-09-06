@@ -1,5 +1,5 @@
 /**
- * ui-ui-snow.js — 积雪系统
+ * ui-snow.js — 积雪系统
  * 从 ui.js 拆分出的模块
  */
 

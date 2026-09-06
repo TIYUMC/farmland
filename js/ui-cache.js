@@ -1,5 +1,5 @@
 /**
- * ui-ui-cache.js — 缓存系统
+ * ui-cache.js — 缓存系统
  * 从 ui.js 拆分出的模块
  */
 
