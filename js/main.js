@@ -297,16 +297,20 @@
   function _startNewGame() {
     _titleTransitionOut(function() {
       _hideTitle();
-      Farm.init();
-      TreeFarm.init();
-      Player.init();
-      Engine.start();
-      // 强制清除旧缓存，避免闪屏显示旧存档数据
+      // 停止动画循环，防止旧帧残留
+      UI._stopAnimLoop();
+      // 清除所有缓存，强制重建
       UI._farmCache = null;
       UI._vegCache = null;
       UI._grassBaseCache = null;
       UI._farmDirty = true;
-      UI.markFarmDirty();
+      // 重新初始化数据
+      Farm.init();
+      TreeFarm.init();
+      Player.init();
+      Engine.start();
+      // 重新启动动画循环并渲染
+      UI._startAnimLoop();
       UI.render();
       UI._renderBottomHotbar();
     });
@@ -315,13 +319,17 @@
     if (!SaveGame.hasSave()) return;
     _titleTransitionOut(function() {
       _hideTitle();
+      // 停止动画循环，防止旧帧残留
+      UI._stopAnimLoop();
+      // 加载存档
       SaveGame.load();
-      // 强制清除旧缓存，确保显示加载的存档数据
+      // 清除所有缓存，强制重建
       UI._farmCache = null;
       UI._vegCache = null;
       UI._grassBaseCache = null;
       UI._farmDirty = true;
-      UI.markFarmDirty();
+      // 重新启动动画循环并渲染
+      UI._startAnimLoop();
       UI.render();
       UI._renderBottomHotbar();
     });

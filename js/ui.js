@@ -4572,6 +4572,14 @@ const UI = {
 
   },
 
+  /** 停止动画循环，用于游戏重置时清除旧渲染帧 */
+  _stopAnimLoop() {
+    if (this._animRaf) {
+      cancelAnimationFrame(this._animRaf);
+      this._animRaf = null;
+    }
+  },
+
 
 
   /** 更新 HUD（仅在值变化时写 DOM，避免每帧 getElementById + 布局重绘——HUD 仅随游戏事件变化） */
