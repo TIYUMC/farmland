@@ -295,10 +295,13 @@
     _stopTitleParticles();
   }
   function _startNewGame() {
+    console.log('[DEBUG] _startNewGame called');
     _titleTransitionOut(function() {
+      console.log('[DEBUG] transition done, starting new game');
       _hideTitle();
       // 停止动画循环，防止旧帧残留
       UI._stopAnimLoop();
+      console.log('[DEBUG] anim loop stopped, _animRaf=', UI._animRaf);
       // 重新初始化数据
       Farm.init();
       TreeFarm.init();
@@ -309,15 +312,19 @@
       UI._vegCache = null;
       UI._grassBaseCache = null;
       UI._farmDirty = true;
+      console.log('[DEBUG] caches cleared, calling render()');
       // 先手动渲染第一帧，再启动动画循环
       UI.render();
+      console.log('[DEBUG] render() done, farmCache=', UI._farmCache ? 'has' : 'null');
       UI._renderBottomHotbar();
       UI._startAnimLoop();
+      console.log('[DEBUG] anim loop started, _animRaf=', UI._animRaf);
     });
   }
   function _continueGame() {
     if (!SaveGame.hasSave()) return;
     _titleTransitionOut(function() {
+      console.log('[DEBUG] _continueGame called');
       _hideTitle();
       // 停止动画循环，防止旧帧残留
       UI._stopAnimLoop();
