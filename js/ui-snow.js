@@ -1,6 +1,5 @@
 /**
- * ui-snow.js — 积雪系统
- * 从 ui.js 拆分出的模块
+ * ui-snow.js — 从 ui.js 拆分
  */
 
 const _snowMethods = {

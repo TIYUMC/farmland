@@ -1,6 +1,5 @@
 /**
- * ui-quest.js — 任务书系统
- * 从 ui.js 拆分出的模块
+ * ui-quest.js — 从 ui.js 拆分
  */
 
 const _questMethods = {

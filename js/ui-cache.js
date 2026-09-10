@@ -1,6 +1,5 @@
 /**
- * ui-cache.js — 缓存系统
- * 从 ui.js 拆分出的模块
+ * ui-cache.js — 从 ui.js 拆分
  */
 
 const _cacheMethods = {

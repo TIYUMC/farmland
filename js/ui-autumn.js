@@ -1,6 +1,5 @@
 /**
- * ui-autumn.js — 秋日落叶系统
- * 从 ui.js 拆分出的模块
+ * ui-autumn.js — 从 ui.js 拆分
  */
 
 const _autumnMethods = {

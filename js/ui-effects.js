@@ -1,6 +1,5 @@
 /**
- * ui-effects.js — 特效系统
- * 从 ui.js 拆分出的模块
+ * ui-effects.js — 从 ui.js 拆分
  */
 
 const _effectsMethods = {

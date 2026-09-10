@@ -16,11 +16,7 @@
     UI.init();
 
     // 用真实贴图替换工具栏 emoji 图标
-    console.log('[init] 开始设置工具栏图标...');
-    console.log('[init] ASSETS.registry 大小:', Object.keys(ASSETS.registry).length);
-    console.log('[init] chest 在 registry 中:', 'chest' in ASSETS.registry);
     _setToolbarIcons();
-    console.log('[init] 工具栏图标设置完成');
     UI._renderBottomHotbar();
 
 
@@ -94,7 +90,8 @@
     // 背包按钮快捷
     _addInventoryButton();
     // 商店按钮：开关村民商店（S 键开；商店开着时 B 键关；点面板外或 Esc 亦可关）
-    document.getElementById('btn-shop').addEventListener('click', () => {
+    const btnShop = document.getElementById('btn-shop');
+    if (btnShop) btnShop.addEventListener('click', () => {
       if (UI._shopOpen) UI.closeShop(); else UI.openShop();
     });
 
@@ -140,22 +137,17 @@
   var _titleCtx = null;
 
   function _startTitleParticles() {
-    console.log('[title] start particles check: UI=', typeof UI, 'Juice=', typeof Juice);
     if (!UI || !UI.init || typeof Juice === 'undefined') {
-      console.warn('[title] missing dependencies');
       return;
     }
     var el = document.getElementById('title-particles');
-    console.log('[title] canvas element:', el);
     if (!el) return;
     if (_titleParticleRAF) { cancelAnimationFrame(_titleParticleRAF); _titleParticleRAF = null; }
     _titleCanvas = el;
     _titleCanvas.width = window.innerWidth;
     _titleCanvas.height = window.innerHeight;
     _titleCtx = _titleCanvas.getContext('2d');
-    console.log('[title] canvas size:', _titleCanvas.width, 'x', _titleCanvas.height);
     _titleParticleSystem = new Juice.ParticleSystem();
-    console.log('[title] particle system created');
     var lastSpawnTime = 0;
     var isHidden = false;
     // 页面不可见时暂停动画
@@ -346,20 +338,18 @@
   }
 
   function _setIconInner(el, assetKey, alt, cls) {
-    if (!el) { console.warn('_setIconInner: el is null'); return false; }
-    if (!ASSETS.registry[assetKey]) { console.warn(`_setIconInner: ${assetKey} not in registry`); return false; }
+    if (!el) { return false; }
+    if (!ASSETS.registry[assetKey]) { return false; }
     const clsAttr = cls ? ` class="${cls}"` : '';
     el.innerHTML = `<img src="${ASSETS.registry[assetKey]}" alt="${alt}"${clsAttr}>`;
-    console.log(`_setIconInner: ${assetKey} → ${el.tagName}.${el.className}`);
     return true;
   }
 
   function _setBtnIcon(btnId, assetKey) {
     const btn = document.getElementById(btnId);
-    if (!btn) { console.warn(`_setBtnIcon: btn ${btnId} not found`); return; }
+    if (!btn) { return; }
     const iconEl = btn.querySelector('.tool-icon');
-    if (!iconEl) { console.warn(`_setBtnIcon: iconEl not found in ${btnId}`); return; }
-    console.log(`_setBtnIcon: ${btnId} → ${assetKey}`, ASSETS.registry[assetKey] ? 'OK' : 'MISSING');
+    if (!iconEl) { return; }
     _swapIcon(iconEl, assetKey, btnId);
   }
 
@@ -399,14 +389,18 @@
   }
 
   function _addInventoryButton() {
-    const toolbar = document.getElementById('toolbar');
     const anchor = document.getElementById('btn-shop');
     const invBtn = document.createElement('div');
     invBtn.className = 'tool-btn';
     invBtn.id = 'btn-inventory';
-    invBtn.innerHTML = '<div class="tool-icon">🎒</div><div class="tool-name">背包</div>';
+    invBtn.innerHTML = '<div class="tool-icon"></div><div class="tool-name">背包</div>';
     invBtn.addEventListener('click', () => UI.openInventory());
-    anchor.parentNode.insertBefore(invBtn, anchor);
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(invBtn, anchor);
+    } else {
+      const toolbar = document.getElementById('toolbar-buttons');
+      if (toolbar) toolbar.appendChild(invBtn);
+    }
     const iconEl = invBtn.querySelector('.tool-icon');
     if (iconEl) _setIconInner(iconEl, 'bundle_filled', '背包', 'tool-icon-img');
   }

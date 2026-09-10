@@ -70,6 +70,7 @@ const Player = {
     this.invSlots = null;        // 长度 36：每格 null 或 {kind,key,label,count,toolId?,seedId?,stackId?}
     this._hotbarSlots = null;    // 长度 9：快捷栏持久布局（跨重开保留用户摆放），每格 null 或身份描述
     this._hotbarSel = 0;         // 当前选中的快捷栏格 0..8
+    this._selectedInvSlot = -1;  // 主背包中选中的格（-1表示无选中）
 
     if (typeof Quest !== 'undefined') Quest.reset(); // 任务书：开局清进度
   },

@@ -1301,3 +1301,10 @@ body {
   }
 }
 
+
+/* 背包/商店/任务面板：禁止触屏滚动干扰交互 */
+#inventory-overlay.overlay-visible,
+#shop-overlay.overlay-visible,
+#quest-overlay.overlay-visible {
+  touch-action: none;
+}

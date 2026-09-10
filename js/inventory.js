@@ -67,21 +67,26 @@ UI.renderInventory = function() {
 
   // 主物品栏 9×3
   const main = document.getElementById('inv-grid-main');
+  if (!main) return;
   main.innerHTML = '';
   for (let i = 0; i < 27; i++) {
-    const s = this._makeSlot(Player.invSlots[i], i, false);
+    // 显示选中格高亮
+    const isSelected = (Player._selectedInvSlot === i);
+    const s = this._makeSlot(Player.invSlots[i], i, false, isSelected);
     s.style.setProperty('--i', i);
     main.appendChild(s);
   }
 
   // 快捷栏 9×1（真实物品栏，可放工具/种子/物品；滚轮切选中格装备）
   const hotbar = document.getElementById('inv-grid-hotbar');
-  hotbar.innerHTML = '';
-  for (let i = 0; i < 9; i++) {
-    const idx = 27 + i;
-    const s = this._makeSlot(Player.invSlots[idx], idx, true, i === Player._hotbarSel);
-    s.style.setProperty('--i', i);
-    hotbar.appendChild(s);
+  if (hotbar) {
+    hotbar.innerHTML = '';
+    for (let i = 0; i < 9; i++) {
+      const idx = 27 + i;
+      const s = this._makeSlot(Player.invSlots[idx], idx, true, i === Player._hotbarSel);
+      s.style.setProperty('--i', i);
+      hotbar.appendChild(s);
+    }
   }
 
   // 合成格：每次渲染背包同步刷新
@@ -100,6 +105,10 @@ UI._makeSlot = function(slot, index, isHotbar, isSelected) {
   if (isHotbar && isSelected) {
     const bgSrc = this._assetURL('gamemode_switcher_selection');
     if (bgSrc) el.style.cssText += ';background-image:url("' + bgSrc + '");background-size:cover;background-repeat:no-repeat;background-position:center';
+  }
+  // 主背包选中格添加高亮类
+  if (!isHotbar && isSelected) {
+    el.classList.add('inv-sel');
   }
 
   if (!slot) return el;                      // 空槽
@@ -459,6 +468,7 @@ UI._invApplyHotbarSel = function() {
   else if (slot && slot.kind === 'seed') Player.selectTool('seed-' + slot.seedId);
   this._updateHeldSlot();
   this.renderInventory();               // 重绘以更新快捷栏选中背景贴图
+  this._renderBottomHotbar();           // 同步底部快捷栏高亮
   const names = { hoe: '锄头', water: '水桶', axe: '斧头', acorn: '橡果' };
   const msg = slot
     ? (slot.kind === 'seed' ? '选择种子：' + slot.label : '选择工具：' + (names[slot.toolId] || slot.label))
@@ -512,6 +522,7 @@ UI._invBindOnce = function() {
   const bind = (gridId) => {
     const g = document.getElementById(gridId);
     if (!g) return;
+    // 鼠标按下
     g.addEventListener('mousedown', (e) => {
       const idx = this._slotIndexFromEvent(e);
       if (idx == null) return;
@@ -520,8 +531,78 @@ UI._invBindOnce = function() {
       if (e.shiftKey && !this._invHeld && Player.invSlots[idx]) {
         this._invShiftTransfer(idx); this._invRenderAndGhost(); return;
       }
+      // 点击快捷栏（idx >= 27）：拿起物品并选中工具
+      if (idx >= 27 && idx < 36 && !this._invHeld) {
+        Player._selectedInvSlot = idx;
+        Player._hotbarSel = idx - 27;
+        this._invApplyHotbarSel();
+      }
       this._invMouseDown(idx, e.button);
     });
+    // 触摸按下（手机支持）
+    g.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const slotEl = target && target.closest('.inv-slot');
+      if (!slotEl || slotEl.dataset.index === undefined) return;
+      const idx = parseInt(slotEl.dataset.index, 10);
+      if (isNaN(idx)) return;
+      // 记录起始状态
+      this._touchX = touch.clientX;
+      this._touchY = touch.clientY;
+      this._touchIdx = idx;
+      this._touchHeld = !!this._invHeld;
+      this._touchEndedOnGrid = false;  // 重置标志，等待touchend确认
+    }, { passive: false });
+    // 触摸移动（检测滑动 + 持续追踪拖拽）
+    g.addEventListener('touchmove', (e) => {
+      if (this._touchIdx == null) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dx = Math.abs(touch.clientX - this._touchX);
+      const dy = Math.abs(touch.clientY - this._touchY);
+      // 未拿起物品：滑动超过阈值后拿起
+      if (!this._invHeld && !this._touchHeld && (dx > 15 || dy > 15)) {
+        const slot = Player.invSlots[this._touchIdx];
+        if (slot) {
+          this._invMouseDown(this._touchIdx, 0);
+        }
+      }
+      // 已拿起物品：持续追踪手指位置更新 ghost 和记录经过的格子
+      if (this._invHeld && this._dragMode === 'pick') {
+        this._touchEndedOnGrid = true;  // 标记有触摸在网格上开始过
+        this._invDragHover(touch.clientX, touch.clientY);
+        // 同步 ghost 位置（桌面用 mousemove，触屏需要手动更新）
+        const gg = document.getElementById('inv-held');
+        if (gg) { gg.style.left = touch.clientX + 'px'; gg.style.top = touch.clientY + 'px'; }
+      }
+    }, { passive: false });
+    // 触摸结束（松开）- 本地处理
+    g.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (this._touchIdx == null) return;
+      this._touchEndedOnGrid = true;  // 标记确认
+      // 如果没有拿起物品且没有滑动，执行选中
+      if (!this._invHeld && !this._touchHeld) {
+        const idx = this._touchIdx;
+        if (idx >= 0 && idx < 27) {
+          Player._selectedInvSlot = idx;
+          this.renderInventory();
+        } else if (idx >= 27 && idx < 36) {
+          Player._selectedInvSlot = idx;
+          Player._hotbarSel = idx - 27;
+          this._invApplyHotbarSel();
+        }
+      } else if (this._invHeld) {
+        // 已拿起物品，执行放下
+        this._invMouseUp();
+      }
+      this._touchX = null;
+      this._touchY = null;
+      this._touchIdx = null;
+      this._touchHeld = false;
+    }, { passive: false });
     g.addEventListener('contextmenu', (e) => {
       e.preventDefault();   // 只阻止浏览器右键菜单；右键交互统一由 mousedown(button=2) 处理，避免与 contextmenu 双触发
     });
@@ -552,6 +633,32 @@ UI._invBindOnce = function() {
   }
   // 全局松开：结束拖拽
   window.addEventListener('mouseup', () => this._invMouseUp());
+  // 触屏松开：在 window 上监听，确保手指抬起在网格外也能正确放下
+  window.addEventListener('touchend', (e) => {
+    if (this._touchIdx == null) return;
+    // 检查是否有触摸在网格上开始过
+    if (!this._touchEndedOnGrid) return;
+    this._touchEndedOnGrid = false;
+    // 如果没有拿起物品且没有滑动，执行选中（主背包或快捷栏均可）
+    if (!this._invHeld && !this._touchHeld) {
+      const idx = this._touchIdx;
+      if (idx >= 0 && idx < 27) {
+        Player._selectedInvSlot = idx;
+        this.renderInventory();
+      } else if (idx >= 27 && idx < 36) {
+        Player._selectedInvSlot = idx;
+        Player._hotbarSel = idx - 27;
+        this._invApplyHotbarSel();
+      }
+    } else if (this._invHeld) {
+      // 已拿起物品，执行放下
+      this._invMouseUp();
+    }
+    this._touchX = null;
+    this._touchY = null;
+    this._touchIdx = null;
+    this._touchHeld = false;
+  }, { passive: false });
   // 键盘：数字 1-9 移物到快捷栏、Q 丢弃光标物
   window.addEventListener('keydown', (e) => {
     if (!this._inventoryOpen) return;
@@ -716,8 +823,15 @@ UI._bindBottomHotbar = function() {
   if (!grid) return;
   // 鼠标滚轮（桌面）
   document.addEventListener('wheel', (e) => {
-    // 任一面板打开时滚轮归该面板所有（商店滚交易列表），不再切换快捷栏
-    if (UI._shopOpen || UI._inventoryOpen || UI._questOpen) return;
+    if (UI._inventoryOpen && UI._hotbarSel != null) {
+      e.preventDefault();
+      const delta = Math.sign(e.deltaY || -e.deltaX);
+      Player._hotbarSel = (Player._hotbarSel + delta + 9) % 9;
+      UI._invApplyHotbarSel();
+      UI._renderBottomHotbar();
+      return;
+    }
+    if (UI._shopOpen || UI._questOpen) return;
     e.preventDefault();
     const delta = Math.sign(e.deltaY || e.deltaX);
     Player._hotbarSel = (Player._hotbarSel + delta + 9) % 9;
