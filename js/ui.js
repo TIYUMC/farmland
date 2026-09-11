@@ -663,7 +663,7 @@ const UI = {
     //   手机横屏：两者移到左右侧栏，此时该扣的是「宽度」而非高度。
     // 若沿用旧的减法，侧栏布局下 availW 会错算成整个屏幕宽，画布将溢出 game-area。
     // 注意：game-area 有 padding: 8px，需要扣除两侧 padding
-    const GAP = 16; // padding 总宽度 (8px * 2)
+    const GAP = 32; // padding 总宽度 (16px * 2)
     const availW = (gameArea.clientWidth || window.innerWidth) - GAP;
     let availH = gameArea.clientHeight - GAP;
     if (!availH || availH < 50) {
