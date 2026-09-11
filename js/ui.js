@@ -101,6 +101,7 @@ const UI = {
   BUSY_SLOW_K: 2.5,    // 体力越低、耗时放大系数：0 体力时耗时 = 满体的 (1+K) = 3.5 倍
 
   _animRaf: null,      // requestAnimationFrame 句柄，用于停止动画循环
+  _isPageVisible: true, // 页面是否可见
   _hoverRaf: null,     // 悬停动画帧句柄
 
 
@@ -448,6 +449,7 @@ const UI = {
 
       this._hoverCell = null;
 
+      this._needsRender = true;
       this.render();
 
     });
@@ -514,6 +516,18 @@ const UI = {
     // 动画循环在游戏正式开始后才启动（_startNewGame / _continueGame）
 
 
+
+        // 页面不可见时暂停渲染，节省性能
+    document.addEventListener('visibilitychange', () => {
+      this._isPageVisible = !document.hidden;
+      if (this._isPageVisible && !this._animRaf) this._startAnimLoop();
+    });
+
+    // 切换场景时重置动画循环
+    window.addEventListener('gameSceneChange', () => {
+      this._stopAnimLoop();
+      if (this._isPageVisible) this._startAnimLoop();
+    });
 
     // 游戏手感增强（juice.js）：粒子 / 漂浮文字 / 屏幕震动 / 箭头平滑 hover
 
@@ -2693,7 +2707,7 @@ const UI = {
 
   /** 标记农场静态层已过期，下次 render 时重建缓存 */
 
-  markFarmDirty() { this._farmDirty = true; },
+  markFarmDirty() { this._farmDirty = true; this._needsRender = true; },
 
   /** 标记单个格子需要重绘（增量更新）。
    *  用于点击操作后只更新变化的格子，避免重建全部120格。 */
@@ -4553,29 +4567,50 @@ const UI = {
     if (this._animRaf) return; // 防止重复启动
 
     let frameCount = 0;
+    let lastRenderTime = 0;
+    // 检测是否为移动端
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+    const minFrameInterval = isMobile ? 32 : 16; // 移动端30fps，桌面60fps
 
     const loop = () => {
 
-      const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      // 页面不可见时跳过渲染，节省性能
+      if (!this._isPageVisible) {
+        this._animRaf = requestAnimationFrame(loop);
+        return;
+      }
+
+      // 脏标记检测：仅在需要渲染时才执行完整渲染
+      const needsRender = this._needsRender || 
+                          (this._grassShakes && this._grassShakes.length > 0) ||
+                          (this._ripples && this._ripples.length > 0) || 
+                          this._transition;
+      
+      // 帧率限制
+      const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      if (!needsRender && now - lastRenderTime < minFrameInterval) {
+        this._animRaf = requestAnimationFrame(loop);
+        return;
+      }
+      lastRenderTime = now;
+
+      const t0 = now;
       frameCount++;
 
       try { this.render(); } catch (err) { console.error('[render loop]', err); }
 
-      if (this.ctx) this.ctx.setTransform(1, 0, 0, 1, 0, 0); // 异常帧后复位变换，防止 save/restore 失衡残留偏移
+      if (this.ctx) this.ctx.setTransform(1, 0, 0, 1, 0, 0); // 异常帧后复位变换
 
-      // 轻量 FPS 统计（仅 console.log 每秒一次，便于定位卡顿是否帧率问题；不要可删）
-
+      // 轻量 FPS 统计（仅 console.log 每秒一次）
       if (typeof performance !== 'undefined') {
-
         if (this._fpsLast == null) this._fpsLast = t0;
-
         this._fpsCount = (this._fpsCount || 0) + 1;
-
         const dt2 = t0 - this._fpsLast;
-
         if (dt2 >= 1000) { this._fps = Math.round(this._fpsCount * 1000 / dt2); this._fpsCount = 0; this._fpsLast = t0; console.log('[FPS]', this._fps); }
-
       }
+
+      // 重置脏标记（已渲染）
+      this._needsRender = false;
 
       this._animRaf = requestAnimationFrame(loop);
 
@@ -5181,7 +5216,7 @@ const UI = {
 
     // ── 树场场景：只处理砍树（斧头），其余工具无意义，统一拦截 ──
 
-    if (this.scene === 'treeFarm') { this._handleTreeFarmClick(row, col, tool); this.render(); return; }
+    if (this.scene === 'treeFarm') { this._handleTreeFarmClick(row, col, tool); this._needsRender = true; this.render(); return; }
 
 
 
@@ -5198,6 +5233,8 @@ const UI = {
       case 'hoe':
 
         this._handleHoeClick(row, col);
+
+        this._needsRender = true;
 
         this.render();
 
@@ -5422,6 +5459,8 @@ const UI = {
 
       this._handleTreeFarmHoeClick(row, col);
 
+      this._needsRender = true;
+
       this.render();
 
       return;
@@ -5448,6 +5487,8 @@ const UI = {
 
       }
 
+      this._needsRender = true;
+
       this.render();
 
       return;
@@ -5457,6 +5498,8 @@ const UI = {
     if (tool === 'axe') this.showStatus('这里没有树可砍', 800);
 
     else this.showStatus('树场里：按 3 切斧头砍树，或选「橡果」点击空格种植', 1000);
+
+    this._needsRender = true;
 
     this.render();
 
@@ -5663,6 +5706,7 @@ const UI = {
     ind.classList.add('busy-hidden');
 
     // 动作完成后触发重绘，确保脏格被刷新到画布
+    this._needsRender = true;
     this.render();
 
   },
