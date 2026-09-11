@@ -662,12 +662,14 @@ const UI = {
     //   桌面 / 竖屏：HUD 与工具栏上下堆叠，game-area 的高度已是扣除后的剩余；
     //   手机横屏：两者移到左右侧栏，此时该扣的是「宽度」而非高度。
     // 若沿用旧的减法，侧栏布局下 availW 会错算成整个屏幕宽，画布将溢出 game-area。
-    const availW = gameArea.clientWidth || window.innerWidth;
-    let availH = gameArea.clientHeight;
-    if (!availH) {
+    // 注意：game-area 有 padding: 8px，需要扣除两侧 padding
+    const GAP = 16; // padding 总宽度 (8px * 2)
+    const availW = (gameArea.clientWidth || window.innerWidth) - GAP;
+    let availH = gameArea.clientHeight - GAP;
+    if (!availH || availH < 50) {
       // 布局尚未稳定时的兜底（toolbar 和 hotbar 分开，各减一次）
       const hotbar = document.getElementById('bottom-hotbar');
-      availH = window.innerHeight - hud.offsetHeight - toolbar.offsetHeight - (hotbar ? hotbar.offsetHeight : 0) - 8;
+      availH = window.innerHeight - hud.offsetHeight - toolbar.offsetHeight - (hotbar ? hotbar.offsetHeight : 0) - 8 - GAP;
     }
 
 
