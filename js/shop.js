@@ -27,6 +27,11 @@ UI.openShop = function() {
   this._shopScroll = 0;       // 每次开店都从第一行看起
   this._shopBarDrag = false;
   this._resetToolParts();
+  // 确保快捷栏数据就绪并刷新显示
+  if (!Player.invSlots) Player._rebuildInvSlots();
+  console.log('[Shop] openShop: invSlots length:', Player.invSlots ? Player.invSlots.length : 'null');
+  console.log('[Shop] openShop: _hotbarSlots:', JSON.stringify(Player._hotbarSlots));
+  if (typeof UI !== 'undefined' && UI._renderBottomHotbar) UI._renderBottomHotbar();
   this._markShopDirty();
 };
 
@@ -571,11 +576,12 @@ UI._drawShopOverlay = function() {
       if (def) pushStacks(def.assetHarvest, count);
     }
   }
+  // 重建完成，复位脏标记
   for (let i = 0; i < 36 && i < items.length; i++) {
     const c = i % 9, r = Math.floor(i / 9);
     createItem(items[i].key, 115 + 18 * c, 91 + 18 * r, 13, items[i].count);
   }
-  // 重建完成，复位脏标记
+  if (rebuild) this._shopDirty = false;
   if (rebuild) this._shopDirty = false;
 };
 

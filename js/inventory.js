@@ -123,7 +123,7 @@ UI._makeSlot = function(slot, index, isHotbar, isSelected) {
   const src = this._assetURL(slot.key) || '';
   let showCount = '';
   if (slot.kind === 'stack') showCount = slot.count > 1 ? slot.count : '';
-  else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 0) ? slot.count : '';
+  else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 1) ? slot.count : '';
   else if (slot.kind === 'seed') showCount = slot.count > 1 ? slot.count : '';
 
   el.title = slot.label + (showCount !== '' ? (' ×' + showCount) : '');
@@ -159,6 +159,11 @@ UI._afterInvChange = function(index) {
     const i = index - 27;
     const s = Player.invSlots[index];
     Player._hotbarSlots[i] = s ? Player._identityFromSlot(s) : null;
+    // 同步快捷栏变化到 inventory（商店背包格依赖此数据）
+    if (s && s.kind === 'tool' && s.toolId === 'acorn') {
+      if (s.count > 0) Player.inventory['acorn'] = s.count;
+      else delete Player.inventory['acorn'];
+    }
   }
 };
 
@@ -227,6 +232,7 @@ UI._invDeposit = function(index, mode) {
       this._invHeld = null;
     }
     this._afterInvChange(index);
+    UI._invRenderAndGhost();
     return;
   }
   // 目标已占用
@@ -256,6 +262,7 @@ UI._invDeposit = function(index, mode) {
     this._invHeld = tmp;
   }
   this._afterInvChange(index);
+  UI._invRenderAndGhost();
 };
 
 /** 拖拽经过新格子：仅记录经过的格子（跳过起点），不立即放下（松手才分发，符合 MC） */
@@ -509,7 +516,7 @@ UI._updateGhost = function() {
   const src = this._assetURL(slot.key) || '';
   let showCount = '';
   if (slot.kind === 'stack') showCount = slot.count > 1 ? slot.count : '';
-  else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 0) ? slot.count : '';
+  else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 1) ? slot.count : '';
   else if (slot.kind === 'seed') showCount = slot.count > 1 ? slot.count : '';
   g.innerHTML = (src ? `<img src="${src}" alt="${slot.label}">` : '') +
                 (showCount !== '' ? `<span class="inv-count">${showCount}</span>` : '');
@@ -778,13 +785,16 @@ UI._seedIconKey = function(cropId) {
 /** 渲染底部始终可见的 MC 风格快捷栏（9 格） */
 UI._renderBottomHotbar = function() {
   const grid = document.getElementById('bottom-hotbar');
-  if (!grid) return;
+  if (!grid) { console.log('[Hotbar] bottom-hotbar element not found'); return; }
   if (!Player.invSlots) Player._rebuildInvSlots();
+  console.log('[Hotbar] invSlots length:', Player.invSlots ? Player.invSlots.length : 'null');
+  console.log('[Hotbar] _hotbarSlots:', JSON.stringify(Player._hotbarSlots));
   UI._bindBottomHotbar();
   grid.innerHTML = '';
   for (let i = 0; i < 9; i++) {
     const idx = 27 + i;
     const slot = Player.invSlots[idx];
+    console.log('[Hotbar] slot', i, '(idx', idx, '):', JSON.stringify(slot));
     const cell = document.createElement('div');
     cell.className = 'hotbar-cell';
     if (i === Player._hotbarSel) cell.classList.add('selected');
