@@ -102,9 +102,15 @@ const Economy = {
     Player.spendMoney(item.cost);
     for (const need of (item.costItems || [])) {
       const left = (Player.inventory[need.id] || 0) - need.count;
-      if (left > 0) Player.inventory[need.id] = left;
-      else delete Player.inventory[need.id];
+      if (left > 0) {
+        Player.inventory[need.id] = left;
+      } else {
+        delete Player.inventory[need.id];
+        if (typeof Player._purgeOrder === 'function') Player._purgeOrder('crop', need.id);
+      }
     }
+    if (typeof Player._rebuildInvSlots === 'function') Player._rebuildInvSlots();
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen && typeof UI.renderInventory === 'function') UI.renderInventory();
     Player.ownedTools[toolId] = true;
     if (typeof Quest !== 'undefined') Quest.trigger('ownTool', toolId); // 任务书：工匠入门
     return { ok: true, name: item.name };

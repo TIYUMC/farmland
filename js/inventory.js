@@ -785,16 +785,13 @@ UI._seedIconKey = function(cropId) {
 /** 渲染底部始终可见的 MC 风格快捷栏（9 格） */
 UI._renderBottomHotbar = function() {
   const grid = document.getElementById('bottom-hotbar');
-  if (!grid) { console.log('[Hotbar] bottom-hotbar element not found'); return; }
+  if (!grid) return;
   if (!Player.invSlots) Player._rebuildInvSlots();
-  console.log('[Hotbar] invSlots length:', Player.invSlots ? Player.invSlots.length : 'null');
-  console.log('[Hotbar] _hotbarSlots:', JSON.stringify(Player._hotbarSlots));
   UI._bindBottomHotbar();
   grid.innerHTML = '';
   for (let i = 0; i < 9; i++) {
     const idx = 27 + i;
     const slot = Player.invSlots[idx];
-    console.log('[Hotbar] slot', i, '(idx', idx, '):', JSON.stringify(slot));
     const cell = document.createElement('div');
     cell.className = 'hotbar-cell';
     if (i === Player._hotbarSel) cell.classList.add('selected');

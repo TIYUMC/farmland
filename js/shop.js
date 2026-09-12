@@ -29,8 +29,6 @@ UI.openShop = function() {
   this._resetToolParts();
   // 确保快捷栏数据就绪并刷新显示
   if (!Player.invSlots) Player._rebuildInvSlots();
-  console.log('[Shop] openShop: invSlots length:', Player.invSlots ? Player.invSlots.length : 'null');
-  console.log('[Shop] openShop: _hotbarSlots:', JSON.stringify(Player._hotbarSlots));
   if (typeof UI !== 'undefined' && UI._renderBottomHotbar) UI._renderBottomHotbar();
   this._markShopDirty();
 };
@@ -86,6 +84,8 @@ UI._findShopItem = function(id) {
 UI._buildTrades = function() {
   const trades = [];
   for (const item of DATA.SHOP_ITEMS) {
+    // 检查解锁条件（如果设置了lockOn，则必须完成对应任务才能解锁）
+    const locked = (item.lockOn && typeof Quest !== 'undefined' && !Quest.isDone(item.lockOn));
     // 工具类（如木斧头）：单独一种交易类型 kind:'tool'，输入=金锭，输出=工具贴图
     if (item.type === 'tool') {
       // 附加材料（如木斧头 = 20 金锭 + 5 小麦）放进村民 GUI 的第二个输入槽
@@ -93,7 +93,8 @@ UI._buildTrades = function() {
       const exDef = extra ? DATA.CROPS[extra.id] : null;
       trades.push({
         id: 'buy_' + item.id, kind: 'tool', cropId: item.id,
-        label: '买' + item.name,
+        label: locked ? '???' : '买' + item.name,
+        locked: locked,
         input:  { key: 'money', label: String(item.cost) },
         input2: extra
           ? { key: (exDef && (exDef.shopSellIcon || exDef.assetHarvest)) || extra.id,
@@ -101,7 +102,7 @@ UI._buildTrades = function() {
               label: ((exDef && exDef.name) || extra.id) + '×' + extra.count }
           : null,
         output: { key: 'wooden_axe', label: item.name },
-        canDo: Economy.canBuyTool(item.id).ok,
+        canDo: locked ? false : Economy.canBuyTool(item.id).ok,
       });
       continue;
     }
@@ -110,18 +111,20 @@ UI._buildTrades = function() {
     if (!def) continue;
     trades.push({
       id: 'buy_' + cropId, kind: 'buy', cropId,
-      label: '买' + item.name,
+      label: locked ? '???' : '买' + item.name,
+      locked: locked,
       input:  { key: 'money', label: String(def.seedCost) },
       output: { key: this._seedIconKey(cropId), label: item.name },
-      canDo: Player.money >= def.seedCost,
+      canDo: locked ? false : Player.money >= def.seedCost,
     });
     const have = Player.inventory[cropId] || 0;
     trades.push({
       id: 'sell_' + cropId, kind: 'sell', cropId,
-      label: '卖' + def.name,
+      label: locked ? '???' : '卖' + def.name,
+      locked: locked,
       input:  { key: def.shopSellIcon || def.assetHarvest, label: def.name + '×' + have },
       output: { key: 'money', label: String(have * def.sellPrice) },
-      canDo: have > 0,
+      canDo: locked ? false : have > 0,
     });
   }
   return trades;
@@ -414,6 +417,20 @@ UI._drawShopOverlay = function() {
       createItem('crafting_arrow', 42, cyc, ARROW_TS);
       createItem(t.output.key, 66, cyc, 13, def.sellPrice);
     }
+    // 已锁定的交易行：覆盖半透明遮罩 + 锁图标
+    if (t.locked) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(rx, ryc, rw, rh);
+      // 在行右侧画锁图标
+      const lockImg = (typeof ASSETS !== 'undefined' && ASSETS.get) ? ASSETS.get('Icon_Locked') : null;
+      if (lockImg) {
+        ctx.imageSmoothingEnabled = false;
+        const lockAR=lockImg.naturalWidth/lockImg.naturalHeight;
+        const lh=16*S; const lw=lh*lockAR;
+        ctx.drawImage(lockImg, 0, 0, lockImg.naturalWidth, lockImg.naturalHeight,
+          rx + rw - lw - 2*S, ryc + (rh-lh)/2, lw, lh);
+      }
+    }
     // 左侧列表行不再叠加红叉（按用户要求移除选择框中间的叉叉）
     // 命中区只登记「当前可见的行」，滚动后自动跟着换，点击/悬停不会错位
     this._shopLayout.rows.push({ id: t.id, x: rx, y: ryc, w: rw, h: rh });
@@ -581,7 +598,28 @@ UI._drawShopOverlay = function() {
     const c = i % 9, r = Math.floor(i / 9);
     createItem(items[i].key, 115 + 18 * c, 91 + 18 * r, 13, items[i].count);
   }
-  if (rebuild) this._shopDirty = false;
+  // ===== H 底部快捷栏：显示主页面快捷栏物品（锄头、水桶等） =====
+  if (!Player.invSlots) Player._rebuildInvSlots();
+  const toolKeyMap = { hoe: 'wooden_hoe', water: 'water_bucket', axe: 'wooden_axe', acorn: 'acorn' };
+  const seedIconMap = { wheat: 'wheat_seeds', potato: 'potato', strawberry: 'mc_sweet_berries', acorn: 'acorn' };
+  for (let i = 0; i < 9; i++) {
+    const slot = Player.invSlots[27 + i];
+    if (!slot) continue;
+    let key = '';
+    let count = 1;
+    if (slot.kind === 'tool') {
+      key = toolKeyMap[slot.toolId] || slot.toolId;
+      count = slot.count || 1;
+    } else if (slot.kind === 'seed') {
+      key = seedIconMap[slot.seedId] || 'wheat_seeds';
+      count = slot.count || 1;
+    }
+    if (key) {
+      const row = 4; // 第5行（快捷栏）
+      const col = i;
+      createItem(key, 115 + 18 * col, 91 + 18 * row - 10, 13, count);
+    }
+  }
   if (rebuild) this._shopDirty = false;
 };
 
@@ -710,6 +748,17 @@ UI._onShopClick = function(x, y) {
   // 交易选项行
   for (const r of L.rows) {
     if (this._hitRect(x, y, r)) {
+      // 如果是锁定项，显示提示并抖动
+      const t = this._trades.find(z => z.id === r.id);
+      if (t && t.locked) {
+        const lockMsg = t.lockOn ? '请先完成任务「' + t.lockOn + '」' : '该选项尚未解锁';
+        if (typeof UI !== 'undefined' && UI._shakeCanvas) {
+          UI._shakeCanvas.call(this, lockMsg, 2500);
+        } else {
+          this.showStatus(lockMsg, 2500);
+        }
+        return;
+      }
       this._shopSel = r.id; this._shopDroppedId = null; this._shopDroppedCount = null; this._shopReservedKey = null; this._resetToolParts(); this._markShopDirty(); return;
     }
   }

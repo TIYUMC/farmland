@@ -426,6 +426,7 @@ body {
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   transition: background-color .15s ease;
+  z-index: calc(10 - var(--i, 0));
 }
 @keyframes slotIn {
   from { opacity: 0; transform: translateY(8px) scale(.85); }

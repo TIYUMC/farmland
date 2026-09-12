@@ -118,6 +118,7 @@ const SaveGame = {
         // inventory / seeds 是聚合格式 {wheat: N}，由 _rebuildInvSlots 重建 invSlots
         inventory: Player?.inventory ?? {},
         seeds: Player?.seeds ?? {},
+        _allOrder: Player?._allOrder ?? [],
         wood: Player?.wood ?? 0,
         planks: Player?.planks ?? 0,
         acorns: Player?.acorns ?? 0,
@@ -166,9 +167,10 @@ const SaveGame = {
       Player.money      = p.money     ?? 0;
       Player.inventory  = p.inventory ?? {};
       Player.seeds      = p.seeds     ?? {};
+      Player._allOrder  = p._allOrder ?? [];
       Player.wood       = p.wood      ?? 0;
       Player.planks     = p.planks    ?? 0;
-      Player.acorns      = p.acorns      ?? 0;
+      Player.acorns     = p.acorns    ?? 0;
       Player.ownedTools = p.ownedTools ?? {};
       Player.questsDone = p.questsDone ?? {};
       Player._hotbarSlots = p._hotbarSlots ?? null;

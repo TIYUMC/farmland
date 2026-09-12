@@ -214,13 +214,21 @@ const Quest = {
     if (item.indexOf('seed:') === 0) {
       const c = item.slice(5), cur = Player.seeds[c] || 0;
       if (cur < need) return false;
-      Player.seeds[c] = cur - need; if (Player.seeds[c] <= 0) delete Player.seeds[c];
+      Player.seeds[c] = cur - need;
+      if (Player.seeds[c] <= 0) {
+        delete Player.seeds[c];
+        if (typeof Player._purgeOrder === 'function') Player._purgeOrder('seed', c);
+      }
       return true;
     }
     if (item.indexOf('crop:') === 0) {
       const c = item.slice(5), cur = Player.inventory[c] || 0;
       if (cur < need) return false;
-      Player.inventory[c] = cur - need; if (Player.inventory[c] <= 0) delete Player.inventory[c];
+      Player.inventory[c] = cur - need;
+      if (Player.inventory[c] <= 0) {
+        delete Player.inventory[c];
+        if (typeof Player._purgeOrder === 'function') Player._purgeOrder('crop', c);
+      }
       return true;
     }
     return false;

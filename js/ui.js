@@ -462,11 +462,11 @@ const UI = {
 
     // （mousemove/mouseup 挂在 window 上，指针拖出画布也不会卡住把手）
 
-    this.canvas.addEventListener('wheel', (e) => this._onShopWheel(e), { passive: false });
+    this.canvas.addEventListener('wheel', (e) => { if (this._onShopWheel) this._onShopWheel(e); }, { passive: false });
 
-    this.canvas.addEventListener('mousedown', (e) => this._onShopBarDown(e));
+    this.canvas.addEventListener('mousedown', (e) => { if (this._onShopBarDown) this._onShopBarDown(e); });
 
-    window.addEventListener('mousemove', (e) => this._onShopBarMove(e));
+    window.addEventListener('mousemove', (e) => { if (this._onShopBarMove) this._onShopBarMove(e); });
 
     window.addEventListener('mouseup', () => { this._shopBarDrag = false; });
 
@@ -2830,11 +2830,14 @@ const UI = {
   /** 点击坐标是否落在导航箭头按钮内 */
 
   _navHit(x, y) {
-
     const r = this._navRect();
-
-    return this._hitRect(x, y, r);
-
+    if (!this._hitRect(x, y, r)) return false;
+    // 树场未解锁时禁止进入（显示锁图标）
+    if (r.dir === 'left') {
+      const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
+      if (unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest)) return false;
+    }
+    return true;
   },
 
 
@@ -2954,6 +2957,34 @@ const UI = {
           ctx.fillStyle = '#fff', ctx.fillText(r.dir === 'left' ? '←' : '→', cx, cy));
 
     ctx.restore();
+
+    // 树场未解锁时：绘制半透明遮罩 + 锁图标
+    const treeFarmUnlock = (typeof DATA !== 'undefined' && DATA.TREEFARM && DATA.TREEFARM.unlockOn);
+    const treeFarmLocked = (r.dir === 'left' && treeFarmUnlock && typeof Quest !== 'undefined' && !Quest.isDone(treeFarmUnlock));
+    if (treeFarmLocked) {
+      const lockImg=(typeof ASSETS!=='undefined'&&ASSETS.get)?ASSETS.get('Icon_Locked'):null;
+      if (lockImg){
+        // 锁图标大小减半，跟随箭头一起移动
+        const lockH=r.w*0.30;
+        const lockAR=lockImg.naturalWidth/lockImg.naturalHeight;
+        const lockW=lockH*lockAR;
+        // 计算招手动效（与箭头同步）- 使用已声明的 nudge 变量
+        const lockNudge = hovering ? nudge : 0;
+        const lockDirSign = (r.dir === 'left') ? -1 : 1;
+        const lockBaseX = (r.dir === 'left') ? r.x : (r.x + r.w - lockW);
+        const lockX = Math.round(lockBaseX + lockDirSign * lockNudge + 15);  // 向右偏移15像素
+        const lockY = Math.round(r.y + (r.h - lockH) / 2);
+        // hover时红色发光效果
+        if (hovering) {
+          ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
+          ctx.shadowBlur = 10;
+        }
+        ctx.drawImage(lockImg,0,0,lockImg.naturalWidth,lockImg.naturalHeight,
+          lockX, lockY, lockW, lockH);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+      }
+    }
 
   },
 
@@ -4832,7 +4863,7 @@ const UI = {
 
   _onMouseMove(e) {
 
-    if (this._shopOpen) { this._onShopMove(e); return; }
+    if (this._shopOpen) { if (this._onShopMove) this._onShopMove(e); return; }
 
     if (this._busy) return; // 正在干活中，悬停高亮冻结在当前地块，不跟随鼠标
 
@@ -5182,7 +5213,7 @@ const UI = {
 
     // 商店打开时点击交给商店逻辑（含「点面板外关闭」）
 
-    if (this._shopOpen) { this._onShopClick(x, y); return; }
+    if (this._shopOpen) { if (this._onShopClick) this._onShopClick(x, y); return; }
 
     if (Engine.paused) return;
 
@@ -5194,8 +5225,16 @@ const UI = {
 
     // 画布左上角导航箭头：树场←回农场 / 农场→去树场（先于网格点击判定）
 
-    if (this._navHit(x, y)) { this.toggleScene(); return; }
-
+    const navHit = this._navHit(x, y);
+    if (navHit) { this.toggleScene(); return; }
+    if (!navHit && this.scene === 'farm') {
+      // 点击了未解锁的导航箭头：显示提示、抖动、红色闪烁
+      const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
+      if (unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest)) {
+        this._shakeCanvas('树场还未解锁，请完成任务「林间初探」', 3000);
+        return;
+      }
+    }
 
 
     const { row, col } = this._cellAt(x, y);
@@ -5722,6 +5761,30 @@ const UI = {
   // ⑨ 状态提示 / 图标
 
   // ─────────────────────────────────────────────
+
+  /** 画布抖动 + 红色边框闪烁（用于拒绝/锁定提示） */
+  _shakeCanvas(msg, duration = 2000) {
+    this.showStatus(msg, duration);
+    // Canvas 抖动
+    this.canvas.style.transform = 'translateX(5px)';
+    setTimeout(() => { this.canvas.style.transform = 'translateX(-5px)'; }, 50);
+    setTimeout(() => { this.canvas.style.transform = 'translateX(3px)'; }, 100);
+    setTimeout(() => { this.canvas.style.transform = 'translateX(-3px)'; }, 150);
+    setTimeout(() => { this.canvas.style.transform = 'translateX(2px)'; }, 200);
+    setTimeout(() => { this.canvas.style.transform = 'translateX(0)'; }, 250);
+    this.canvas.style.boxShadow = 'inset 0 0 0 4px rgba(255, 0, 0, 0.6)';
+    setTimeout(() => { this.canvas.style.boxShadow = 'none'; }, 300);
+    // 同时抖动商店图标层（如果有）
+    const shopIcons = document.getElementById('shop-icons');
+    if (shopIcons) {
+      shopIcons.style.transform = 'translateX(5px)';
+      setTimeout(() => { shopIcons.style.transform = 'translateX(-5px)'; }, 50);
+      setTimeout(() => { shopIcons.style.transform = 'translateX(3px)'; }, 100);
+      setTimeout(() => { shopIcons.style.transform = 'translateX(-3px)'; }, 150);
+      setTimeout(() => { shopIcons.style.transform = 'translateX(2px)'; }, 200);
+      setTimeout(() => { shopIcons.style.transform = 'translateX(0)'; }, 250);
+    }
+  },
 
   showStatus(msg, duration = 1500) {
 

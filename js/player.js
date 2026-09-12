@@ -45,6 +45,10 @@ const Player = {
   // 种子背包：{ [cropId]: count } — 用于种植
   seeds: {},
 
+  // 物品获得顺序追踪（保持插入顺序，供 _rebuildInvSlots 使用）
+  // 统一追踪所有物品类型，避免按类型分组导致的顺序错乱
+  _allOrder: [],  // [{type:'seed'|'crop'|'resource', id:key}]
+
   // 当前选择的工具/种子
   selectedTool: 'hoe',
 
@@ -61,6 +65,7 @@ const Player = {
     this.ownedTools = { axe: false }; // 木斧头开局不拥有，需商店购买
     this.inventory = {};
     this.seeds = {}; // 开局不送种子（仅锄头+水桶；种子由教程 tut1 奖励发放）
+    this._allOrder = [];
     this.selectedTool = 'hoe';
 
     // 背包布局模型（MC 风 36 格：0..26 主栏 + 27..35 快捷栏）
@@ -166,36 +171,64 @@ const Player = {
     const inv = new Array(36).fill(null);
     // 快捷栏：按持久布局还原
     for (let i = 0; i < 9; i++) inv[27 + i] = this._slotFromIdentity(this._hotbarSlots[i]);
-    // 主栏：未进快捷栏的工具/种子 + 所有堆叠资源
+    // 主栏：按物品获得顺序混合排列（工具/种子/收获物/资源都按首次获得时间排队）
     const main = [];
     const toolMap = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, acorn: { key: 'acorn', label: '橡果' } };
-    for (const t of ['hoe', 'water', 'axe', 'acorn']) {
-      if (t === 'axe' && !this.ownsTool('axe')) continue;
-      if (t === 'acorn' && !(this.acorns > 0)) continue;
-      if (this._hbHasTool(t)) continue;
-      main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: t === 'acorn' ? (this.acorns || 0) : 1 });
-    }
-    for (const sid of Object.keys(this.seeds || {})) {
-      const c = this.seeds[sid]; if (!c || c <= 0) continue;
-      if (this._hbHasSeed(sid)) continue;
-      const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[sid] : null;
-      main.push({ kind: 'seed', seedId: sid, key: UI._seedIconKey(sid), label: def ? def.name : sid, count: c });
-    }
     const pushStacks = (stackId, key, label) => {
       const total = this._stackCountFromAgg(stackId);
       for (const n of UI._stackChunks(total)) main.push({ kind: 'stack', stackId, key, label, count: n });
     };
-    for (const [cid, c] of Object.entries(this.inventory || {})) {
-      if (!c || c <= 0) continue;
-      // 橡果已作为 tool 槽生成（见上方 toolMap），跳过避免背包里出现两格橡果
-      if (cid === 'acorn') continue;
-      const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[cid] : null;
-      if (!def) continue;
-      pushStacks('crop:' + cid, def.assetHarvest, def.name);
+    // 兼容旧存档：若 _allOrder 为空，从 inventory/seeds 反向构建顺序
+    if (!this._allOrder || this._allOrder.length === 0) {
+      this._allOrder = [];
+      // 按 keys 插入顺序添加种子和作物
+      for (const sid of Object.keys(this.seeds || {})) {
+        if ((this.seeds[sid] || 0) > 0) this._allOrder.push({ type: 'seed', id: sid });
+      }
+      for (const cid of Object.keys(this.inventory || {})) {
+        if (cid === 'acorn') continue;
+        if ((this.inventory[cid] || 0) > 0) this._allOrder.push({ type: 'crop', id: cid });
+      }
+      // 资源类
+      if (this.wood > 0) this._allOrder.push({ type: 'resource', id: 'wood' });
+      if (this.planks > 0) this._allOrder.push({ type: 'resource', id: 'planks' });
+      if (this.money > 0) this._allOrder.push({ type: 'resource', id: 'money' });
     }
-    if (this.wood > 0) pushStacks('wood', 'oak_log_3d', '木头');
-    if (this.planks > 0) pushStacks('planks', 'oak_planks_3d', '木板');
-    if (this.money > 0) pushStacks('money', 'money', '金锭');
+    // 按统一顺序数组插入所有物品
+    for (const entry of (this._allOrder || [])) {
+      if (entry.type === 'seed') {
+        const sid = entry.id;
+        const c = this.seeds[sid]; if (!c || c <= 0) continue;
+        if (this._hbHasSeed(sid)) continue;
+        const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[sid] : null;
+        main.push({ kind: 'seed', seedId: sid, key: UI._seedIconKey(sid), label: def ? def.name : sid, count: c });
+      } else if (entry.type === 'crop') {
+        const cid = entry.id;
+        if (cid === 'acorn') continue; // 橡果单独处理
+        const c = this.inventory[cid];
+        if (!c || c <= 0) continue;
+        const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[cid] : null;
+        if (!def) continue;
+        pushStacks('crop:' + cid, def.assetHarvest, def.name);
+      } else if (entry.type === 'resource') {
+        if (entry.id === 'wood' && this.wood > 0) pushStacks('wood', 'oak_log_3d', '木头');
+        else if (entry.id === 'planks' && this.planks > 0) pushStacks('planks', 'oak_planks_3d', '木板');
+        else if (entry.id === 'money' && this.money > 0) pushStacks('money', 'money', '金锭');
+      }
+    }
+    // 工具（开局固定添加）
+    for (const t of ['hoe', 'water']) {
+      if (this._hbHasTool(t)) continue;
+      main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: 1 });
+    }
+    if (this.ownsTool('axe')) {
+      if (!this._hbHasTool('axe')) {
+        main.push({ kind: 'tool', toolId: 'axe', key: toolMap['axe'].key, label: toolMap['axe'].label, count: 1 });
+      }
+    }
+    if (this.acorns > 0 && !this._hbHasTool('acorn')) {
+      main.push({ kind: 'tool', toolId: 'acorn', key: toolMap['acorn'].key, label: toolMap['acorn'].label, count: this.acorns });
+    }
     for (let k = 0; k < main.length && k < 27; k++) inv[k] = main[k];
     this.invSlots = inv;
   },
@@ -235,6 +268,9 @@ const Player = {
   addMoney(amount) {
     this.money += amount;
     if (typeof Quest !== 'undefined') Quest.trigger('earn', amount); // 任务书：小富即安
+    if (!this._allOrder.some(e => e.type === 'resource' && e.id === 'money')) {
+      this._allOrder.push({ type: 'resource', id: 'money' });
+    }
     // 重建背包缓存，确保金币出现在背包格子中
     this._rebuildInvSlots();
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen) {
@@ -246,6 +282,11 @@ const Player = {
   spendMoney(amount) {
     if (this.money < amount) return false;
     this.money -= amount;
+    if (this.money <= 0) this._purgeOrder('resource', 'money');
+    this._rebuildInvSlots();
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen) {
+      globalThis.UI.renderInventory();
+    }
     return true;
   },
 
@@ -256,6 +297,9 @@ const Player = {
   addWood(amount) {
     this.wood += (amount || 0);
     if (typeof Quest !== 'undefined') Quest.trigger('wood', amount); // 任务书：物资储备/林间建设者
+    if (!this._allOrder.some(e => e.type === 'resource' && e.id === 'wood')) {
+      this._allOrder.push({ type: 'resource', id: 'wood' });
+    }
   },
 
   /** 加橡果（砍树掉落） */
@@ -271,6 +315,9 @@ const Player = {
   /** 加木板（原木合成获得，1 原木 → 4 木板） */
   addPlanks(amount) {
     this.planks += (amount || 0);
+    if (!this._allOrder.some(e => e.type === 'resource' && e.id === 'planks')) {
+      this._allOrder.push({ type: 'resource', id: 'planks' });
+    }
   },
 
   /** 是否还有橡果可种 */
@@ -296,14 +343,39 @@ const Player = {
   // ─────────────────────────────────────────────
   // ⑥ 收获物背包
   // ─────────────────────────────────────────────
-  /** 收获物添加 */
+  /** 收获物添加（按首次获得顺序追踪） */
   addToInventory(cropId, count) {
     this.inventory[cropId] = (this.inventory[cropId] || 0) + count;
+    if (!this._allOrder.some(e => e.type === 'crop' && e.id === cropId)) {
+      this._allOrder.push({ type: 'crop', id: cropId });
+    }
   },
 
   /** 收获物清空 */
   clearInventory() {
     this.inventory = {};
+    this._allOrder = [];
+  },
+
+  /** 从 _allOrder 移除条目（物品数量为0或已被删除时调用） */
+  _purgeOrder(type, id) {
+    if (!this._allOrder) return;
+    this._allOrder = this._allOrder.filter(e => !(e.type === type && e.id === id));
+  },
+
+  /** 清理所有已耗尽物品的 _allOrder 条目，并重建背包布局 */
+  _syncAllOrder() {
+    if (!this._allOrder) return;
+    this._allOrder = this._allOrder.filter(e => {
+      if (e.type === 'seed') return (this.seeds[e.id] || 0) > 0;
+      if (e.type === 'crop') return (this.inventory[e.id] || 0) > 0;
+      if (e.type === 'resource') {
+        if (e.id === 'money') return this.money > 0;
+        if (e.id === 'wood') return this.wood > 0;
+        if (e.id === 'planks') return this.planks > 0;
+      }
+      return false;
+    });
   },
 
   /** 计算收获物出售总价 */
@@ -324,9 +396,12 @@ const Player = {
   // ─────────────────────────────────────────────
   // ⑦ 种子
   // ─────────────────────────────────────────────
-  /** 种子操作 */
+  /** 种子操作（按首次获得顺序追踪） */
   addSeeds(cropId, count) {
     this.seeds[cropId] = (this.seeds[cropId] || 0) + count;
+    if (!this._allOrder.some(e => e.type === 'seed' && e.id === cropId)) {
+      this._allOrder.push({ type: 'seed', id: cropId });
+    }
   },
 
   hasSeed(cropId) {
@@ -337,7 +412,14 @@ const Player = {
     const cur = this.seeds[cropId] || 0;
     if (cur <= 0) return false;
     this.seeds[cropId] = cur - 1;
-    if (this.seeds[cropId] <= 0) delete this.seeds[cropId];
+    if (this.seeds[cropId] <= 0) {
+      delete this.seeds[cropId];
+      if (typeof this._purgeOrder === 'function') this._purgeOrder('seed', cropId);
+    }
+    this._rebuildInvSlots();
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen) {
+      globalThis.UI.renderInventory();
+    }
     return true;
   },
 
