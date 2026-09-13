@@ -181,7 +181,7 @@ const DATA = {
     { id:'tut_harvest',parent:'m3',     x:420,  y:180, icon:'book_purple', title:'收获作物',   desc:'① 作物完全成熟时，麦穗会变得金黄饱满 ② 鼠标移到成熟作物上，光标变成手形 ③ 右键点击作物即可收获 ④ 收获后获得作物果实进入背包 �5 不同作物成熟时间不同，小麦约4天', cat:'core', manual:true, tutorial:true },
     { id:'tut_sell', parent:'m3',       x:520,  y:180, icon:'book_purple', title:'出售赚钱',   desc:'① 按S键打开商店 ② 用鼠标滚轮上下滚动浏览商品列表 ③ 点击你想卖出的作物，它会出现在左侧槽位 ④ 点击交易按钮完成出售，获得金币 ⑤ 也可以直接用右键把背包里的作物卖给商人', cat:'core', manual:true, tutorial:true },
     { id:'tut_craft',parent:'m4',       x:580,  y:280, icon:'book_purple', title:'合成系统',   desc:'① 按B打开背包界面 ② 找到背包左上角的2×2合成格 ③ 将原材料放入合成格，如放入1块原木 ④ 合成格右侧会自动显示成品：4块木板 ⑤ 点击成品即可收入背包，也可继续用木板合成其他物品', cat:'core', manual:true, tutorial:true },
-    { id:'tut_wood', parent:'g_tools',  x:580,  y:180, icon:'wooden_axe',  title:'砍伐树木',   desc:'① 按数字键3选择斧头 ② 前往农场西北角的树场 ③ 点击树木，斧头会砍伐树木 ④ 砍倒后获得原木和少量橡果 ⑤ 每次砍伐消耗体力，注意观察体力条', cat:'core', manual:true, tutorial:true },
+    { id:'tut_wood', parent:'g_tools',  x:900,  y:180, icon:'wooden_axe',  title:'砍伐树木',   desc:'① 按数字键3选择斧头 ② 前往农场西北角的树场 ③ 点击树木，斧头会砍伐树木 ④ 砍倒后获得原木和少量橡果 ⑤ 每次砍伐消耗体力，注意观察体力条', cat:'core', manual:true, tutorial:true },
     { id:'tut_inv',  parent:'a1',       x:240,  y:280, icon:'book_purple', title:'背包操作',   desc:'① 按B键打开背包界面 ② 左键拖拽整堆物品到新位置 ③ 右键点击物品，拿走一半数量 ④ 长按左键并拖拽，可将物品均分到多个空格 ⑤ 底部9个快捷栏可快速切换工具', cat:'core', manual:true, tutorial:true },
 
     // —— 网关节点（独立放置，不连主线）——
