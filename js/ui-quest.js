@@ -119,7 +119,8 @@ const _questMethods = {
 
     const activeTab = this._questTab;
 
-    const vis = ADV.filter(n => n.cat === activeTab);
+    // 可见节点：core 标签显示主线链（cat:core 且非 tutorial）+ 教程节点；其他 tab 正常过滤
+    const vis = ADV.filter(n => activeTab === 'core' ? (n.cat === 'core') : n.cat === activeTab);
 
     // 可见节点包围盒 + 质心：用于把当前页节点居中到面板视口（避免散在四角「一左一右一上一下」）
 
@@ -155,7 +156,7 @@ const _questMethods = {
 
     // 坐标空间固定为 760×717（与面板 176:166 一致）；框为正方形，图标居中，文字在框右侧（放不下则翻左）
 
-    const PW = 760, PH = 717, FS = 52, ICON = 34, GAP = 8, TXT_W = 80;
+    const PW = 900, PH = 800, FS = 72, ICON = 48, GAP = 12, TXT_W = 110;
 
 
 
@@ -181,11 +182,11 @@ const _questMethods = {
 
     vis.forEach(n => {
 
-      if (!n.parent || !byId[n.parent] || n.tutorial) return;
+      if (!n.parent || !byId[n.parent]) return;
 
       const p = byId[n.parent];
 
-      if (p.cat !== n.cat) return;   // 跨分类父节点（如教程挂到核心页根「初来乍到」）不画连线，避免孤儿线
+      if (p.cat !== n.cat && !n.tutorial) return;   // 跨分类父节点（如主线→教程）允许连线，其他跨分类不画
 
       const path = document.createElementNS(NS, 'path');
 
@@ -449,6 +450,13 @@ const _questMethods = {
       const frame = document.createElement('div');
 
       frame.className = 'quest-frame';
+      // 检查节点是否被前置任务锁定
+      if (typeof Quest !== 'undefined' && !n.done) {
+        const pend = preOf(n).filter(p => !p.done);
+        if (pend.length) {
+          frame.classList.add('locked');
+        }
+      }
 
       frame.style.left = (n.x - FS / 2) + 'px';
 
@@ -467,6 +475,31 @@ const _questMethods = {
       frame.style.backgroundImage = `url(${R[frameKey]})`;
 
       tree.appendChild(frame);
+
+
+      // 锁定节点叠加锁图标——右上角小图标，加到 tree 避免被 ic 覆盖
+      let lockBadge = null;
+      if (frame.classList.contains('locked')) {
+        lockBadge = document.createElement('div');
+        lockBadge.className = 'quest-lock-badge';
+        lockBadge.style.position = 'absolute';
+        lockBadge.style.left = (n.x - FS / 2 + FS - 26 - 2) + 'px';
+        lockBadge.style.top = (n.y - FS / 2 + 2) + 'px';
+        lockBadge.style.width = '26px';
+        lockBadge.style.height = '26px';
+        lockBadge.style.display = 'flex';
+        lockBadge.style.alignItems = 'center';
+        lockBadge.style.justifyContent = 'center';
+        lockBadge.style.zIndex = '10';
+        lockBadge.style.pointerEvents = 'none';
+        const lockImg = document.createElement('img');
+        lockImg.src = R['Icon_Locked'] || '';
+        lockImg.style.width = '20px';
+        lockImg.style.height = '20px';
+        lockImg.style.objectFit = 'contain';
+        lockBadge.appendChild(lockImg);
+        tree.appendChild(lockBadge);
+      }
 
 
 
@@ -524,9 +557,25 @@ const _questMethods = {
 
       frame.addEventListener('pointerdown', (e) => e.stopPropagation()); // 防止面板拖拽 setPointerCapture 吞掉 click
 
+      // 锁定节点点击抖动反馈
+      const isLocked = frame.classList.contains('locked');
       frame.addEventListener('click', (e) => {
 
         e.stopPropagation();
+
+        if (isLocked) {
+          // 未解锁：背景、图标、锁标一起抖动
+          frame.classList.remove('shake');
+          ic.classList.remove('shake');
+          void frame.offsetWidth;
+          void ic.offsetWidth;
+          frame.classList.add('shake');
+          ic.classList.add('shake');
+          lockBadge.classList.add('shake');
+          void lockBadge.offsetWidth;
+          lockBadge.classList.add('shake');
+          return;
+        }
 
         if ((typeof Quest !== 'undefined') && n.manual && !Quest.isDone(n.id) && Quest._manualClaimable(n)) {
 

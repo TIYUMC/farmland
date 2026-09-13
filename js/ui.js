@@ -5225,15 +5225,23 @@ const UI = {
 
     // 画布左上角导航箭头：树场←回农场 / 农场→去树场（先于网格点击判定）
 
-    const navHit = this._navHit(x, y);
-    if (navHit) { this.toggleScene(); return; }
-    if (!navHit && this.scene === 'farm') {
-      // 点击了未解锁的导航箭头：显示提示、抖动、红色闪烁
-      const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
-      if (unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest)) {
-        this._shakeCanvas('树场还未解锁，请完成任务「林间初探」', 3000);
-        return;
+    // 检查是否点击了导航箭头区域（不含解锁判断，用于显示锁定提示）
+    const navRect = this._navRect();
+    const navClick = this._hitRect(x, y, navRect);
+    if (navClick) {
+      // 尝试导航，如果未解锁则显示提示
+      if (this._navHit(x, y)) {
+        this.toggleScene();
+      } else {
+        const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
+        if (unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest)) {
+          const quests = (typeof DATA !== 'undefined' && DATA.QUESTS) || [];
+          const q = quests.find(x => x.id === unlockQuest);
+          const questTitle = q?.title || '林间初探';
+          this._shakeCanvas(`树场还未解锁，请完成任务「${questTitle}」`, 3000);
+        }
       }
+      return;
     }
 
 
@@ -5993,8 +6001,10 @@ const UI = {
   showFullSummary() {
 
     const overlay = document.getElementById('day-summary');
+    if (!overlay) return;
 
     const content = document.getElementById('summary-content');
+    if (!content) return;
 
     content.innerHTML = '';
 
@@ -6065,10 +6075,10 @@ const UI = {
     // 此处结算面板仅为“纯展示浮层”：几秒后自动淡出，“继续/跳过”按钮仅用于提前收起。
 
     const nextBtn = document.getElementById('summary-next');
-
-    nextBtn.innerHTML = confirmHtml ? confirmHtml + ' 关闭' : '关闭';
-
-    nextBtn.onclick = () => this.closeSummary();
+    if (nextBtn) {
+      nextBtn.innerHTML = confirmHtml ? confirmHtml + ' 关闭' : '关闭';
+      nextBtn.onclick = () => this.closeSummary();
+    }
 
 
 
@@ -6550,6 +6560,13 @@ const UI = {
       const frame = document.createElement('div');
 
       frame.className = 'quest-frame';
+      // 检查节点是否被前置任务锁定
+      if (typeof Quest !== 'undefined' && !n.done) {
+        const pend = preOf(n).filter(p => !p.done);
+        if (pend.length) {
+          frame.classList.add('locked');
+        }
+      }
 
       frame.style.left = (n.x - FS / 2) + 'px';
 
@@ -6568,6 +6585,27 @@ const UI = {
       frame.style.backgroundImage = `url(${R[frameKey]})`;
 
       tree.appendChild(frame);
+
+      // 锁定节点叠加锁图标——全屏遮罩 + 居中锁图标，确保明显可见
+      if (frame.classList.contains('locked')) {
+        const lockOvl = document.createElement('div');
+        lockOvl.className = 'quest-lock-ovl';
+        lockOvl.style.position = 'absolute';
+        lockOvl.style.inset = '0';
+        lockOvl.style.display = 'flex';
+        lockOvl.style.alignItems = 'center';
+        lockOvl.style.justifyContent = 'center';
+        lockOvl.style.backgroundColor = 'rgba(0,0,0,0.65)';
+        lockOvl.style.border = '3px solid rgba(255,200,0,0.8)';
+        lockOvl.style.borderRadius = '4px';
+        const lockImg = document.createElement('img');
+        lockImg.src = R['Icon_Locked'] || '';
+        lockImg.style.width = '32px';
+        lockImg.style.height = '32px';
+        lockImg.style.imageRendering = 'pixelated';
+        lockOvl.appendChild(lockImg);
+        frame.appendChild(lockOvl);
+      }
 
 
 
@@ -6589,7 +6627,8 @@ const UI = {
 
       ic.src = R[n.done ? 'confirm' : n.icon] || R[n.icon] || '';
 
-      tree.appendChild(ic);
+      // 图标放入 frame 内部，与锁覆盖层共享同一 stacking context，避免遮住锁图标
+      frame.appendChild(ic);
 
 
 
@@ -6609,7 +6648,8 @@ const UI = {
 
       txt.innerHTML = `<div class="quest-ttl">${n.title}</div>`;
 
-      tree.appendChild(txt);
+      // 文字也放入 frame 内部，与锁覆盖层共享同一 stacking context
+      frame.appendChild(txt);
 
 
 

@@ -292,6 +292,12 @@
     Farm.init();
     TreeFarm.init();
     Player.init();
+    // 初来乍到：开局 0.5s 后自动完成，获得锄头+水桶+5金
+    if (typeof Quest !== 'undefined') {
+      setTimeout(function() {
+        Quest.claim('root');
+      }, 500);
+    }
     Engine.start();
     UI._farmCache = null;
     UI._vegCache = null;
@@ -310,7 +316,7 @@
     if (!SaveGame.hasSave()) return;
     // 立即开始加载和渲染（并行于标题淡出）
     UI._stopAnimLoop();
-    SaveGame.load();
+    if (!SaveGame.load()) return;  // 存档损坏或丢失：中断，不覆盖存档
     UI._farmCache = null;
     UI._vegCache = null;
     UI._grassBaseCache = null;

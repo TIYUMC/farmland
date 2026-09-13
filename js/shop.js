@@ -218,6 +218,12 @@ UI._executeTrade = function(t) {
     if (this._shopDroppedCount <= 0) {
       this._resetShopDropped();
     }
+    // 刷新背包缓存和显示（金锭/工具等立即同步）
+    Player._rebuildInvSlots();
+    if (typeof UI !== 'undefined') {
+      if (UI._inventoryOpen && UI.renderInventory) UI.renderInventory();
+      if (UI._renderBottomHotbar) UI._renderBottomHotbar();
+    }
   } else {
     this.showStatus(`❌ ${res ? res.reason : '交易失败'}`, 1200);
   }
@@ -582,7 +588,11 @@ UI._drawShopOverlay = function() {
       items.push({ key, count: inSlot });
     }
   };
-  pushStacks('money', Player.money); // 金币余额按 64 一组堆叠，带数量角标
+  // 工具材料按总块数推入（砍树/加工后刷新）
+  Object.entries(toolParts).forEach(([key, count]) => {
+    if (count > 0) pushStacks(key, count);
+  });
+  // 金锭不进商店背包，只显示在快捷栏
   DATA.SHOP_ITEMS.forEach(item => {
     const c = Player.seeds[item.id] || 0;
     if (c > 0) pushStacks(this._seedIconKey(item.id), c);
@@ -612,6 +622,9 @@ UI._drawShopOverlay = function() {
       count = slot.count || 1;
     } else if (slot.kind === 'seed') {
       key = seedIconMap[slot.seedId] || 'wheat_seeds';
+      count = slot.count || 1;
+    } else if (slot.kind === 'resource') {
+      key = slot.key || slot.id;
       count = slot.count || 1;
     }
     if (key) {

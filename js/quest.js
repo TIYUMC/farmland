@@ -148,11 +148,15 @@ const Quest = {
     }
     if (typeof Player !== 'undefined') Player.questsDone[id] = true;
     this._grantReward(q.reward);
+    // 重建背包缓存，确保金锭/工具等立即显示
+    if (typeof Player !== 'undefined') Player._rebuildInvSlots();
     // 提交消耗了物品：背包若开着则实时刷新
-    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) {
-      globalThis.UI.renderInventory();
+    if (typeof globalThis.UI !== 'undefined') {
+      if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+      else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+      if (globalThis.UI._questOpen && globalThis.UI._renderQuest) globalThis.UI._renderQuest();
+      if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
     }
-    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._questOpen && globalThis.UI._renderQuest) globalThis.UI._renderQuest();
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showStatus) globalThis.UI.showStatus('成就达成：' + q.title, 1600);
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showAchievement) globalThis.UI.showAchievement(q.title, 'nether_star', 3500);
     return true;
@@ -175,7 +179,37 @@ const Quest = {
     else if (id === 'acorns') Player.addAcorns(n);
     else if (id === 'axe') {
       Player.ownedTools.axe = true;
-      if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+      Player._ensureToolInHotbar('axe');
+      // 无条件刷新快捷栏和背包（确保工具立即显示）
+      Player._rebuildInvSlots();
+      if (typeof globalThis.UI !== 'undefined') {
+        if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
+      }
+    }
+    else if (id === 'hoe') {
+      Player.ownedTools.hoe = true;
+      Player.selectTool('hoe');
+      Player._ensureToolInHotbar('hoe');
+      // 无条件刷新快捷栏和背包（确保工具立即显示）
+      Player._rebuildInvSlots();
+      if (typeof globalThis.UI !== 'undefined') {
+        if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
+      }
+    }
+    else if (id === 'water') {
+      Player.ownedTools.water = true;
+      Player._ensureToolInHotbar('water');
+      // 无条件刷新快捷栏和背包（确保工具立即显示）
+      Player._rebuildInvSlots();
+      if (typeof globalThis.UI !== 'undefined') {
+        if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
+      }
     }
     else if (id.indexOf('seed:') === 0) {
       const seedId = id.slice(5);

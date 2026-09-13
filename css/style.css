@@ -118,7 +118,6 @@ body {
   /* 半透明高亮，提示此处可放置（仅投放态可见感弱，主要靠交互） */
   background: rgba(255, 255, 255, 0.04);
   border: 1px dashed rgba(255, 255, 255, 0.25);
-  border-radius: 3px;
 }
 /* 列表行图标槽位：底色透明，让后面的模板框（浅灰/深色选中框）透出来，
    小麦等顶部透明的图标透明区显示框的底色，看起来像坐在槽位里而非被切掉。 */
@@ -325,14 +324,12 @@ body {
   height: 6px;
   width: 150px;
   background: rgba(255,255,255,0.22);
-  border-radius: 3px;
   overflow: hidden;
 }
 #busy-fill {
   height: 100%;
   width: 0%;
   background: #ffcf5a;
-  border-radius: 3px;
 }
 
 /* ===== 弹窗 ===== */
@@ -634,9 +631,9 @@ body {
 #quest-overlay.overlay-hidden  { opacity: 0; visibility: hidden;  pointer-events: none; }
 #quest-panel {
   position: relative;
-  /* 与背包面板同尺寸公式：跟随窗口缩放、最大 760px，比例 176:166，做到「跟背包一样大」 */
-  width: min(760px, 94vw);
-  aspect-ratio: 176 / 166;
+  /* 任务书面板：跟随窗口缩放、最大 900px，比例适配放大后的节点 */
+  width: min(900px, 96vw);
+  aspect-ratio: 9 / 8;
   background-size: 100% 100%; background-repeat: no-repeat;
   border: 4px solid #3b3b3b; box-shadow: 0 10px 30px rgba(0,0,0,.6);
   image-rendering: pixelated;
@@ -659,7 +656,7 @@ body {
 .q-link.done { stroke: #7ec46a; }
 /* 任务节点：正方形框(obtained/unobtained 区分完成) + 居中图标 + 文字 */
 .quest-frame { position: absolute; background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated; box-sizing: border-box; pointer-events: auto; }
-.quest-ic { position: absolute; image-rendering: pixelated; pointer-events: none; }
+.quest-ic { position: absolute; image-rendering: pixelated; pointer-events: none; z-index: 1; }
 .quest-txt { position: absolute; width: 120px; font-size: 12px; line-height: 1.3; text-shadow: 1px 1px 2px #000, 0 0 3px #000; pointer-events: none; }
 .quest-ttl { font-weight: bold; color: #fff; }
 .quest-ds { color: #dfe; font-size: 11px; }
@@ -693,7 +690,6 @@ body {
 /* 关联节点小标签：未完成灰、已完成绿；跨支线的追加分类名 */
 .quest-gr .q-node {
   display: inline-block; margin: 1px 3px 1px 0; padding: 0 4px;
-  border-radius: 3px; background: rgba(255,255,255,.09); color: #e6e0cf;
 }
 .quest-gr .q-node.ok { background: rgba(126,196,106,.18); color: #b9e6a8; }
 .quest-gr .q-node i { font-style: normal; opacity: .6; font-size: 10px; }
@@ -714,6 +710,13 @@ body {
 /* 节点 hover：轻微放大 + 提亮（与进场动画不冲突，.qenter 已移除） */
 .quest-frame { transition: transform .16s cubic-bezier(0.16,1,0.3,1), filter .16s ease; }
 .quest-frame:hover { transform: scale(1.07); filter: brightness(1.12); }
+/* 锁定态节点：去饱和变暗，hover 也不提亮、光标变禁止 */
+.quest-frame.locked { filter: brightness(.55) saturate(.45); }
+.quest-frame.locked { animation: questLockPulse 2s infinite; }
+.quest-frame.locked:hover { transform: none; filter: brightness(.55) saturate(.45); cursor: not-allowed; }
+@keyframes questLockPulse { 0%,100% { opacity: 1; } 50% { opacity: .85; } }
+/* 锁定节点：锁图标叠加层 */
+.quest-lock-ovl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; pointer-events: none; }
 /* 尊重「减少动效」偏好：降级为无空间位移的即时显隐 */
 @media (prefers-reduced-motion: reduce) {
   #quest-overlay, #quest-frame-wrap { transition: opacity .01ms !important; }
@@ -721,6 +724,7 @@ body {
   .qenter, .q-link { animation: none !important; }
   .quest-frame { transition: none !important; }
   .quest-frame:hover { transform: none !important; filter: none !important; }
+  .quest-frame.locked { filter: brightness(.55) saturate(.45) !important; }
   .quest-tip { transition: opacity .01ms !important; }
 }
 /* 任务书整体外框：选项卡在上、面板在下，整体居中（不再整体上移，否则选项卡被推离面板） */
@@ -816,32 +820,31 @@ body {
   .shop-item.is-draggable:hover { transform: none !important; }
 }
 
-/* ===== 成就弹窗（MC 风） ===== */
+/* ===== 成就弹窗（MC 风）——从右侧屏幕外探出头 ===== */
 #achievement-toast {
   position: fixed;
   top: 52px;
-  right: 16px;
+  left: 100%;
   z-index: 200;
   pointer-events: none;
   opacity: 0;
-  transform: translateX(12px);
-  transition: opacity .35s cubic-bezier(.4,0,.2,1), transform .35s cubic-bezier(.4,0,.2,1);
+  transition: opacity .3s cubic-bezier(.4,0,.2,1), left .4s cubic-bezier(.4,0,.2,1);
 }
 #achievement-toast.toast-visible {
   opacity: 1;
-  transform: translateX(0);
+  left: 90%;
 }
 #achievement-toast.toast-hidden {
   opacity: 0;
-  transform: translateX(12px);
+  left: 100%;
 }
 .achievement-frame {
   position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 20px;
-  min-width: 240px;
+  padding: 21px 30px;
+  min-width: 360px;
   background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAICAYAAADA+m62AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAVklEQVR4nGP4////PwAFgwLP3KxjNwAAAABJRU5ErkJggg==') no-repeat center / contain;
   /* 背景由 JS 动态插入 img.bg 提供 */
 }
@@ -1232,9 +1235,8 @@ body {
     flex-shrink: 0;
   }
 
-  /* ── 状态提示 / Toast 缩小，避免横屏下挡住画面 ── */
+  /* ── 状态提示 / Toast ── */
   #status-message { font-size: 12px; padding: 4px 12px; }
-  #achievement-toast { transform: scale(0.85); }
 }
 
 /* 竖屏旋转提示已按用户要求移除。
@@ -1293,9 +1295,8 @@ body {
   #bottom-hotbar .item-icon { width: 24px; height: 24px; }
   #bottom-hotbar .item-count { font-size: 8px; }
 
-  /* 状态提示与 Toast 缩小，避免挡住画面 */
+  /* 状态提示与 Toast */
   #status-message { font-size: 12px; padding: 5px 12px; }
-  #achievement-toast { transform: scale(0.85); }
 
   /* 刘海屏安全区 */
   #game-container {
@@ -1310,4 +1311,31 @@ body {
 #shop-overlay.overlay-visible,
 #quest-overlay.overlay-visible {
   touch-action: none;
+}
+
+
+
+/* 任务节点锁徽章 */
+.quest-lock-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  z-index: 10;
+  pointer-events: none;
+}
+/* 锁定任务节点点击：左右抖动反馈 */
+@keyframes questLockedShake {
+  0%, 100% { transform: translateX(0); }
+  20%  { transform: translateX(-4px); }
+  40%  { transform: translateX(4px); }
+  60%  { transform: translateX(-3px); }
+  80%  { transform: translateX(3px); }
+}
+.quest-frame.shake, .quest-ic.shake { animation: questLockedShake .3s cubic-bezier(.36,.07,.19,.97) both; }
+.quest-frame.locked.shake, .quest-ic.shake, .quest-lock-badge.shake { animation: questLockedShake .3s cubic-bezier(.36,.07,.19,.97) both !important; }
+.quest-frame.locked:not(.shake) { animation: questLockPulse 2s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .quest-frame.shake { animation: none; }
 }

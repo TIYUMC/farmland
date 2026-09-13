@@ -112,12 +112,13 @@ UI._makeSlot = function(slot, index, isHotbar, isSelected) {
   }
 
   if (!slot) return el;                      // 空槽
-  const cls = slot.kind === 'seed' ? 'seed' : (slot.kind === 'tool' ? 'tool' : 'crop');
+  const cls = slot.kind === 'seed' ? 'seed' : (slot.kind === 'tool' ? 'tool' : (slot.kind === 'resource' ? 'resource' : 'crop'));
   el.classList.add(cls);
 
-  // 工具/种子数量为 0 时显示为空格（MC 风格：没货就空着，但仍可拖入）
+  // 工具/种子/资源数量为 0 时显示为空格（MC 风格：没货就空着，但仍可拖入）
   const emptyToolSeed = (slot.kind === 'tool' && slot.toolId === 'acorn' && !(slot.count > 0)) ||
-                        (slot.kind === 'seed' && !(slot.count > 0));
+                        (slot.kind === 'seed' && !(slot.count > 0)) ||
+                        (slot.kind === 'resource' && !(slot.count > 0));
   if (emptyToolSeed) { el.classList.add('inv-empty'); return el; }
 
   const src = this._assetURL(slot.key) || '';
@@ -125,6 +126,7 @@ UI._makeSlot = function(slot, index, isHotbar, isSelected) {
   if (slot.kind === 'stack') showCount = slot.count > 1 ? slot.count : '';
   else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 1) ? slot.count : '';
   else if (slot.kind === 'seed') showCount = slot.count > 1 ? slot.count : '';
+  else if (slot.kind === 'resource') showCount = slot.count > 1 ? slot.count : '';
 
   el.title = slot.label + (showCount !== '' ? (' ×' + showCount) : '');
   el.innerHTML = (src ? `<img src="${src}" alt="${slot.label}">` : '') +
@@ -518,6 +520,7 @@ UI._updateGhost = function() {
   if (slot.kind === 'stack') showCount = slot.count > 1 ? slot.count : '';
   else if (slot.kind === 'tool') showCount = (slot.toolId === 'acorn' && slot.count > 1) ? slot.count : '';
   else if (slot.kind === 'seed') showCount = slot.count > 1 ? slot.count : '';
+  else if (slot.kind === 'resource') showCount = slot.count > 1 ? slot.count : '';
   g.innerHTML = (src ? `<img src="${src}" alt="${slot.label}">` : '') +
                 (showCount !== '' ? `<span class="inv-count">${showCount}</span>` : '');
 };
@@ -807,7 +810,7 @@ UI._renderBottomHotbar = function() {
         ? this._assetURL(toolKeyMap[slot.toolId] || slot.toolId)
         : slot.kind === 'seed'
           ? this._assetURL(this._seedIconKey(slot.seedId))
-          : this._assetURL(slot.key || slot.kind);
+          : this._assetURL(slot.key || slot.kind || slot.id);
       if (iconSrc) icon.src = iconSrc;
       else if (slot.kind === 'seed') icon.src = this._assetURL('wheat_seeds');
       cell.appendChild(icon);

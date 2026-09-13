@@ -86,8 +86,8 @@ const Player = {
   /** 默认快捷栏布局（开局一次，之后由 _hotbarSlots 持久化用户摆放） */
   _defaultHotbarSlots() {
     const hb = [null, null, null, null, null, null, null, null, null];
-    hb[0] = { kind: 'tool', toolId: 'hoe' };
-    hb[1] = { kind: 'tool', toolId: 'water' };
+    if (this.ownsTool('hoe')) hb[0] = { kind: 'tool', toolId: 'hoe' };
+    if (this.ownsTool('water')) hb[1] = { kind: 'tool', toolId: 'water' };
     if (this.ownsTool('axe')) hb[2] = { kind: 'tool', toolId: 'axe' };
     if ((this.seeds && this.seeds.wheat) > 0) hb[4] = { kind: 'seed', seedId: 'wheat' };
     return hb;
@@ -141,6 +141,12 @@ const Player = {
     if (id.kind === 'stack') {
       return { kind: 'stack', stackId: id.stackId, key: id.key, label: id.label, count: this._stackCountFromAgg(id.stackId) };
     }
+    if (id.kind === 'resource') {
+      // 资源类型（金钱/木头/木板）使用聚合数据实时同步数量
+      const countMap = { money: this.money, wood: this.wood, planks: this.planks };
+      const count = countMap[id.id] || 1;
+      return { kind: 'resource', id: id.id, key: id.key || id.id, label: id.label || id.id, count: count };
+    }
     return null;
   },
 
@@ -162,6 +168,7 @@ const Player = {
     if (s.kind === 'tool') return { kind: 'tool', toolId: s.toolId };
     if (s.kind === 'seed') return { kind: 'seed', seedId: s.seedId };
     if (s.kind === 'stack') return { kind: 'stack', stackId: s.stackId, key: s.key, label: s.label };
+    if (s.kind === 'resource') return { kind: 'resource', id: s.id, key: s.key, label: s.label };
     return null;
   },
 
@@ -169,8 +176,6 @@ const Player = {
   _rebuildInvSlots() {
     if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
     const inv = new Array(36).fill(null);
-    // 快捷栏：按持久布局还原
-    for (let i = 0; i < 9; i++) inv[27 + i] = this._slotFromIdentity(this._hotbarSlots[i]);
     // 主栏：按物品获得顺序混合排列（工具/种子/收获物/资源都按首次获得时间排队）
     const main = [];
     const toolMap = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, acorn: { key: 'acorn', label: '橡果' } };
@@ -213,22 +218,47 @@ const Player = {
       } else if (entry.type === 'resource') {
         if (entry.id === 'wood' && this.wood > 0) pushStacks('wood', 'oak_log_3d', '木头');
         else if (entry.id === 'planks' && this.planks > 0) pushStacks('planks', 'oak_planks_3d', '木板');
-        else if (entry.id === 'money' && this.money > 0) pushStacks('money', 'money', '金锭');
+        // 金锭不进主背包，只保留在快捷栏（由下方单独处理）
+        else if (entry.id === 'money') continue;
       }
     }
-    // 工具（开局固定添加）
+    // 更新快捷栏金锭——若已有金锭则直接更新数量，否则放入第一个空位
+    const existingMoneySlot = this._hotbarSlots.findIndex(s => s && s.kind === 'resource' && s.id === 'money');
+    if (existingMoneySlot >= 0) {
+      this._hotbarSlots[existingMoneySlot].count = this.money;
+    } else if (this.money > 0) {
+      const hbEmptyIdx = this._hotbarSlots.findIndex(s => !s);
+      if (hbEmptyIdx >= 0) {
+        this._hotbarSlots[hbEmptyIdx] = { kind: 'resource', id: 'money', key: 'money', label: '金锭', count: this.money };
+      }
+    }
+    // 工具：只有拥有时才放入快捷栏（开局时 ownedTools 为空，由 _grantItem 添加工具后触发重建）
     for (const t of ['hoe', 'water']) {
+      if (!this.ownsTool(t)) continue; // 未获得该工具时不加入
       if (this._hbHasTool(t)) continue;
-      main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: 1 });
+      const empty = this._hotbarSlots.findIndex(s => !s);
+      if (empty >= 0) {
+        this._hotbarSlots[empty] = { kind: 'tool', toolId: t };
+      } else {
+        main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: 1 });
+      }
     }
     if (this.ownsTool('axe')) {
       if (!this._hbHasTool('axe')) {
-        main.push({ kind: 'tool', toolId: 'axe', key: toolMap['axe'].key, label: toolMap['axe'].label, count: 1 });
+        const empty = this._hotbarSlots.findIndex(s => !s);
+        if (empty >= 0) {
+          this._hotbarSlots[empty] = { kind: 'tool', toolId: 'axe' };
+        } else {
+          main.push({ kind: 'tool', toolId: 'axe', key: toolMap['axe'].key, label: toolMap['axe'].label, count: 1 });
+        }
       }
     }
     if (this.acorns > 0 && !this._hbHasTool('acorn')) {
       main.push({ kind: 'tool', toolId: 'acorn', key: toolMap['acorn'].key, label: toolMap['acorn'].label, count: this.acorns });
     }
+    // 快捷栏：按持久布局还原（现在 _hotbarSlots 已更新）
+    for (let i = 0; i < 9; i++) inv[27 + i] = this._slotFromIdentity(this._hotbarSlots[i]);
+    // 主栏填入背包
     for (let k = 0; k < main.length && k < 27; k++) inv[k] = main[k];
     this.invSlots = inv;
   },
@@ -271,11 +301,8 @@ const Player = {
     if (!this._allOrder.some(e => e.type === 'resource' && e.id === 'money')) {
       this._allOrder.push({ type: 'resource', id: 'money' });
     }
-    // 重建背包缓存，确保金币出现在背包格子中
+    // 重新构建背包缓存，使金锭立即显示
     this._rebuildInvSlots();
-    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen) {
-      globalThis.UI.renderInventory();
-    }
   },
 
   /** 扣钱 */
