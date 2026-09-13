@@ -166,24 +166,23 @@ const DATA = {
   //   3) 每个节点都有意义：参考 FTB 进度，删去同指标递增刷数节点(开垦10/30、砍树10/25、收获200等)与 challenge 奖励节点，仅留清晰里程碑（首达成/阶段跃迁）。
   //   4) 布局：每分类一条水平直线，节点间距 DX=75，y 统一 320（由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现）。
   QUESTS: [
-    // —— 主线+教程连续一条直线（所有节点 y=320，无分支）——
-    { id:'root',     parent:null,      x:80,   y:320, icon:'book_purple', title:'初来乍到',   desc:'欢迎来到 Farmland，点击领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{ items:[{id:'hoe', count:1},{id:'water', count:1}], money:5} },
-    { id:'tut1',     parent:'root',     x:170,  y:320, icon:'bundle_filled', title:'整备行囊', desc:'点击领取启程物资 —— 5 颗小麦种子，正式踏上农场之旅。', cat:'core', manual:true, tutorial:true, track:{k:'manual'}, reward:{ items:[{id:'seed:wheat', count:5}] } },
-    { id:'a1',       parent:'tut1',     x:260,  y:320, icon:'dirt',        title:'开垦田地',   desc:'用锄头开垦 1 块耕地，翻松土壤播下希望。', cat:'core', track:{k:'till', n:1} },
-    { id:'tut_hotbar', parent:'a1',     x:350,  y:320, icon:'book_purple', title:'快捷栏操作', desc:'鼠标滚轮可滚动底部快捷栏，选择要使用的工具或种子；也可点击对应格直接装备。', cat:'core', manual:true, tutorial:true },
-    { id:'tut_inv',  parent:'a1',       x:440,  y:320, icon:'book_purple', title:'背包操作',   desc:'打开背包（按 B）后可拖拽物品，右键拿取一半，左键整堆移动；长按左键可均分物品到多个格。', cat:'core', manual:true, tutorial:true },
-    { id:'g_farm',   parent:'tut_inv',  x:530,  y:320, icon:'wheat_seeds', title:'播种耕作',   desc:'在耕地播下 1 颗种子，解锁「耕作」支线任务页。', cat:'core', track:{k:'plant', n:1} },
-    { id:'tut2',     parent:'g_farm',   x:620,  y:320, icon:'wheat_stage0', title:'春种秋收', desc:'用小麦种子播种，麦穗成熟后收获；将 5 份小麦交回，换取木料。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:5}, reward:{ items:[{id:'wood', count:3}] } },
-    { id:'m3',       parent:'tut2',     x:710,  y:320, icon:'小麦',        title:'初次丰收',   desc:'累计收获 10 份作物，体验春华秋实。', cat:'core', track:{k:'harvest', n:10} },
-    { id:'g_tools',  parent:'m3',       x:800,  y:320, icon:'wooden_axe',  title:'置办农具',   desc:'在商店购得木斧头，解锁「工匠」支线任务页。', cat:'core', track:{k:'ownTool', tool:'axe'} },
-    { id:'tut4',     parent:'g_tools',  x:890,  y:320, icon:'wooden_hoe',  title:'林间拾薪',   desc:'持斧前往树场砍伐，集齐 4 份木头交回，换取橡果以便补种。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'wood', n:4}, reward:{ items:[{id:'acorns', count:3}] } },
-    { id:'g_forage', parent:'tut4',     x:980,  y:320, icon:'oak_log_3d',  title:'林间初探',   desc:'砍倒第一棵树，解锁「采集」支线任务页。', cat:'core', track:{k:'chop', n:1} },
-    { id:'tut5',     parent:'g_forage', x:1070, y:320, icon:'shop',        title:'集市贸易',   desc:'将收获的小麦带到商店售出，用 20 份小麦换取 20 金锭，打通经济循环。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ money:20 } },
-    { id:'m4',       parent:'tut5',     x:1160, y:320, icon:'money',       title:'小有积蓄',   desc:'累计赚取 100 金锭，农场初具规模。', cat:'core', track:{k:'earn', n:100} },
-    { id:'tut_craft',parent:'m4',       x:1250, y:320, icon:'crafting_arrow', title:'合成技巧', desc:'将原材料放入背包左上角 2×2 合成格，即可自动合成木板、木棍等物品；成品会自动出现在合成格右侧。', cat:'core', manual:true, tutorial:true },
-    { id:'tut_key',  parent:'tut_craft',x:1340, y:320, icon:'command_block', title:'快捷操作', desc:'数字键 1-9 可切换快捷栏选中格，Esc 关闭当前窗口，按 B 打开背包，按 S 打开商店。', cat:'core', manual:true, tutorial:true },
-    { id:'tut3',     parent:'tut_key',  x:1430, y:320, icon:'cherry_sapling', title:'巧手合成', desc:'把 1 个橡木原木放入背包 2×2 合成格制得 4 木板，交回换取木料。', cat:'core', manual:true, tutorial:true, track:{k:'submit', item:'planks', n:4}, reward:{ items:[{id:'wood', count:4}] } },
-    { id:'tut_shop', parent:'tut3',     x:1520, y:320, icon:'shop',        title:'商店交易',   desc:'按 S 打开商店，用滚动条浏览商品，点击选中后放入槽位交易；也可上下拖动右侧滑块翻页。', cat:'core', manual:true, tutorial:true },
+    // —— 主线：里程碑节点（连续一条直线）——
+    { id:'root',     parent:null,      x:80,   y:320, icon:'book_purple', title:'初来乍到',   desc:'欢迎来到 Farmland。点击"开始游戏"领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{ items:[{id:'hoe', count:1},{id:'water', count:1}], money:5} },
+    { id:'a1',       parent:'root',     x:170,  y:320, icon:'dirt',        title:'开垦田地',   desc:'用锄头点击草地或裸土，将其变为耕地。耕地是种植作物的基础。', cat:'core', track:{k:'till', n:1} },
+    { id:'m3',       parent:'a1',       x:260,  y:320, icon:'wheat_stage3', title:'初次收获',   desc:'在耕地上播下种子，等待作物成熟（显示饱满麦穗），右键点击收获。', cat:'core', track:{k:'harvest', n:1} },
+    { id:'m4',       parent:'m3',       x:350,  y:320, icon:'money',       title:'第一桶金',   desc:'累计赚取 50 金锭，农场初具规模。', cat:'core', track:{k:'earn', n:50} },
+
+    // —— 教程节点（悬浮在主线上方的气泡，描述更丰富）——
+    { id:'tut1',     parent:'root',     x:80,   y:240, icon:'bundle_filled', title:'启程礼包', desc:'点击"领取"按钮，获得锄头、浇水壶和5颗小麦种子。这些初始工具将伴随你整个游戏过程。', cat:'core', manual:true, tutorial:true },
+    { id:'tut_hotbar', parent:'a1',     x:170,  y:240, icon:'book_purple', title:'快捷栏操作', desc:'底部快捷栏可装备工具/种子。滚轮滚动切换选中格，点击格子直接装备。数字键1-9快速切换。', cat:'core', manual:true, tutorial:true },
+    { id:'tut_inv',  parent:'a1',       x:260,  y:240, icon:'book_purple', title:'背包操作',   desc:'按B打开背包。左键拖拽移动整堆物品，右键拿取一半，长按左键均分物品到多个格。', cat:'core', manual:true, tutorial:true },
+    { id:'tut2',     parent:'m3',       x:260,  y:240, icon:'book_purple', title:'作物生长',   desc:'播种后作物需3天成熟。每天浇水加速生长，雨天自动浇水。成熟后麦穗饱满，右键收获。', cat:'core', manual:true, tutorial:true },
+    { id:'tut_craft',parent:'m4',       x:350,  y:240, icon:'book_purple', title:'合成系统',   desc:'将原材料放入背包左上角2×2合成格，自动产出成品。如1原木→4木板，1浆果→2果汁。', cat:'core', manual:true, tutorial:true },
+
+    // —— 网关节点（独立放置，不连主线）——
+    { id:'g_farm',   parent:null,      x:440,  y:320, icon:'wheat_seeds', title:'▶ 播种耕作', desc:'完成本节点解锁「耕作」支线任务页。', cat:'core', track:{k:'plant', n:1}, manual:true },
+    { id:'g_tools',  parent:null,      x:530,  y:320, icon:'wooden_axe',  title:'▶ 置办农具', desc:'完成本节点解锁「工匠」支线任务页。', cat:'core', track:{k:'ownTool', tool:'axe'}, manual:true },
+    { id:'g_forage', parent:null,      x:620,  y:320, icon:'oak_log',     title:'▶ 林间初探', desc:'完成本节点解锁「采集」支线任务页。', cat:'core', track:{k:'chop', n:1}, manual:true },
     // —— 耕作支线（种植 → 收获，由主线「播种耕作」解锁）——
     { id:'fa1',  parent:'g_farm',  x:80,  y:200, icon:'potato', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
     { id:'fa2',  parent:'fa1',     x:155, y:200, icon:'小麦',        title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 30 金锭酬金。',       cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:30 } },
