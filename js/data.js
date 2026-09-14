@@ -185,9 +185,9 @@ const DATA = {
     { id:'tut_inv',  parent:'tut_water',       x:660,  y:350, icon:'book_purple', title:'背包操作',   desc:'① 按B键打开背包界面 ② 左键拖拽整堆物品到新位置 ③ 右键点击物品，拿走一半数量 ④ 长按左键并拖拽，可将物品均分到多个空格 ⑤ 底部9个快捷栏可快速切换工具', cat:'core', manual:true, tutorial:true },
 
     // —— 网关节点（独立放置，不连主线）——
-    { id:'g_farm',   parent:'tut_wood',      x:1300,  y:350, icon:'wheat_seeds', title:'▶ 播种耕作', desc:'完成本节点解锁「耕作」支线任务页。', cat:'core', track:{k:'plant', n:1}, manual:true },
-    { id:'g_tools',  parent:'g_farm',      x:1380,  y:350, icon:'wooden_axe',  title:'▶ 置办农具', desc:'完成本节点解锁「工匠」支线任务页。', cat:'core', track:{k:'ownTool', tool:'axe'}, manual:true },
-    { id:'g_forage', parent:'g_tools',      x:1460,  y:350, icon:'oak_log',     title:'▶ 林间初探', desc:'完成本节点解锁「采集」支线任务页。', cat:'core', track:{k:'chop', n:1}, manual:true },
+    { id:'g_farm',   parent:'tut_wood',      x:1140,  y:350, icon:'wheat_seeds', title:'▶ 播种耕作', desc:'完成本节点解锁「耕作」支线任务页。', cat:'core', track:{k:'plant', n:1}, manual:true },
+    { id:'g_tools',  parent:'g_farm',      x:1300,  y:350, icon:'wooden_axe',  title:'▶ 置办农具', desc:'完成本节点解锁「工匠」支线任务页。', cat:'core', track:{k:'ownTool', tool:'axe'}, manual:true },
+    { id:'g_forage', parent:'g_tools',      x:1380,  y:350, icon:'oak_log',     title:'▶ 林间初探', desc:'完成本节点解锁「采集」支线任务页。', cat:'core', track:{k:'chop', n:1}, manual:true },
     // —— 耕作支线（种植 → 收获，由主线「播种耕作」解锁）——
     { id:'fa1',  parent:'g_farm',  x:80,  y:100, icon:'potato', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
     { id:'fa2',  parent:'fa1',     x:155, y:100, icon:'小麦',        title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 30 金锭酬金。',       cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:30 } },
