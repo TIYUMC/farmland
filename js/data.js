@@ -167,33 +167,33 @@ const DATA = {
   //   4) 布局：每分类一条水平直线，节点间距 DX=75，y 统一 320（由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现）。
   QUESTS: [
     // —— 主线：里程碑节点（连续一条直线）——
-    { id:'root',     parent:null,      x:100,   y:350, icon:'wooden_hoe', title:'初来乍到',   desc:'欢迎来到 Farmland。点击"开始游戏"领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{ items:[{id:'hoe', count:1},{id:'water', count:1}], money:5} },
+    { id:'root',     parent:null,      x:100,   y:350, icon:'book_purple', title:'初来乍到',   desc:'欢迎来到 Farmland。点击"开始游戏"领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{ items:[{id:'hoe', count:1},{id:'water', count:1}], money:5} },
     { id:'a1',       parent:'tut_grass',     x:420,  y:350, icon:'dirt',        title:'开垦田地',   desc:'用锄头点击草地或裸土，将其变为耕地。耕地是种植作物的基础。', cat:'core', track:{k:'till', n:1} },
-    { id:'m3',       parent:'tut_inv',       x:740,  y:350, icon:'wheat_stage3', title:'初次收获',   desc:'在耕地上播下种子，等待作物成熟（显示饱满麦穗），右键点击收获。', cat:'core', track:{k:'harvest', n:1} },
-    { id:'m4',       parent:'tut_sell',       x:980,  y:350, icon:'potatoes_stage3', title:'第一桶金',   desc:'累计赚取 50 金锭，农场初具规模。', cat:'core', track:{k:'earn', n:50} },
+    { id:'m3',       parent:'tut_inv',       x:740,  y:350, icon:'wheat_seeds', title:'初次收获',   desc:'在耕地上播下种子，等待作物成熟（显示饱满麦穗），右键点击收获。', cat:'core', track:{k:'harvest', n:1} },
+    { id:'m4',       parent:'tut_sell',       x:980,  y:350, icon:'money',       title:'第一桶金',   desc:'累计赚取 50 金锭，农场初具规模。', cat:'core', track:{k:'earn', n:50} },
 
     // —— 教程节点（串联在主线上）——
-    { id:'tut1',     parent:'root',     x:180,  y:350, icon:'oak_log', title:'启程礼包', desc:'① 点击开始游戏进入游戏 ② 屏幕中央会出现领取按钮，点击它 ③ 获得初始道具：锄头、浇水壶、5颗小麦种子 ④ 按ESC关闭提示，开始你的农场之旅', cat:'core', manual:true, tutorial:true },
+    { id:'tut1',     parent:'root',     x:180,  y:350, icon:'bundle_filled', title:'启程礼包', desc:'① 点击开始游戏进入游戏 ② 屏幕中央会出现领取按钮，点击它 ③ 获得初始道具：锄头、浇水壶、5颗小麦种子 ④ 按ESC关闭提示，开始你的农场之旅', cat:'core', manual:true, tutorial:true },
     { id:'tut_hoe',  parent:'tut1',     x:260,  y:350, icon:'wooden_hoe',         title:'锄头使用',   desc:'① 按数字键1选择锄头，或点击底部快捷栏选中 ② 鼠标移到草地上（绿色方块），光标变成锄头图标 ③ 左键点击草地，草地变成泥土（浅棕色） ④ 再次点击泥土，变成耕地（深棕色） ⑤ 耕地才能播种，泥土和草地无法种植', cat:'core', manual:true, tutorial:true },
     { id:'tut_grass',parent:'tut_hoe',     x:340,   y:350, icon:'short_dry_grass', title:'除草方法',   desc:'① 草地上会长出杂草（黄色小苗） ② 用锄头点击杂草即可清除 ③ 清除杂草需要消耗少量体力 ④ 草地上也可以直接耕地，一次清除杂草变耕地', cat:'core', manual:true, tutorial:true },
-    { id:'tut_seed', parent:'tut_grass',       x:500,  y:350, icon:'wheat_stage1', title:'播种方法',   desc:'① 按B打开背包界面 ② 找到小麦种子（在起始礼包里） ③ 将种子拖拽到快捷栏（底部9个格子） ④ 退出背包，选中种子 ⑤ 点击已耕好的土地即可播种 ⑥ 种下的种子第二天开始生长', cat:'core', manual:true, tutorial:true },
-    { id:'tut_water',parent:'tut_seed',       x:580,  y:350, icon:'coarse_dirt', title:'浇水技巧',   desc:'① 按数字键2选择浇水壶，或点击快捷栏选中 ② 鼠标移到已播种的耕地上，光标变成水壶图标 ③ 左键点击耕地进行浇水 ④ 浇水的作物每天多长一个阶段 ⑤ 下雨天会自动给所有耕地浇水，无需操作', cat:'core', manual:true, tutorial:true },
-    { id:'tut_harvest',parent:'tut_inv',     x:820,  y:350, icon:'wheat_stage3', title:'收获作物',   desc:'① 作物完全成熟时，麦穗会变得金黄饱满 ② 鼠标移到成熟作物上，光标变成手形 ③ 右键点击作物即可收获 ④ 收获后获得作物果实进入背包 ⑤ 不同作物成熟时间不同，小麦约4天', cat:'core', manual:true, tutorial:true },
-    { id:'tut_sell', parent:'tut_harvest',       x:900,  y:350, icon:'potatoes_stage3', title:'出售赚钱',   desc:'① 按S键打开商店 ② 用鼠标滚轮上下滚动浏览商品列表 ③ 点击你想卖出的作物，它会出现在左侧槽位 ④ 点击交易按钮完成出售，获得金币 ⑤ 也可以直接用右键把背包里的作物卖给商人', cat:'core', manual:true, tutorial:true },
-    { id:'tut_craft',parent:'tut_sell',       x:1060,  y:350, icon:'rooted_dirt', title:'合成系统',   desc:'① 按B打开背包界面 ② 找到背包左上角的2×2合成格 ③ 将原材料放入合成格，如放入1块原木 ④ 合成格右侧会自动显示成品：4块木板 ⑤ 点击成品即可收入背包，也可继续用木板合成其他物品', cat:'core', manual:true, tutorial:true },
+    { id:'tut_seed', parent:'tut_grass',       x:500,  y:350, icon:'wheat_seeds', title:'播种方法',   desc:'① 按B打开背包界面 ② 找到小麦种子（在起始礼包里） ③ 将种子拖拽到快捷栏（底部9个格子） ④ 退出背包，选中种子 ⑤ 点击已耕好的土地即可播种 ⑥ 种下的种子第二天开始生长', cat:'core', manual:true, tutorial:true },
+    { id:'tut_water',parent:'tut_seed',       x:580,  y:350, icon:'water_bucket', title:'浇水技巧',   desc:'① 按数字键2选择浇水壶，或点击快捷栏选中 ② 鼠标移到已播种的耕地上，光标变成水壶图标 ③ 左键点击耕地进行浇水 ④ 浇水的作物每天多长一个阶段 ⑤ 下雨天会自动给所有耕地浇水，无需操作', cat:'core', manual:true, tutorial:true },
+    { id:'tut_harvest',parent:'tut_inv',     x:820,  y:350, icon:'wheat_seeds', title:'收获作物',   desc:'① 作物完全成熟时，麦穗会变得金黄饱满 ② 鼠标移到成熟作物上，光标变成手形 ③ 右键点击作物即可收获 ④ 收获后获得作物果实进入背包 ⑤ 不同作物成熟时间不同，小麦约4天', cat:'core', manual:true, tutorial:true },
+    { id:'tut_sell', parent:'tut_harvest',       x:900,  y:350, icon:'money', title:'出售赚钱',   desc:'① 按S键打开商店 ② 用鼠标滚轮上下滚动浏览商品列表 ③ 点击你想卖出的作物，它会出现在左侧槽位 ④ 点击交易按钮完成出售，获得金币 ⑤ 也可以直接用右键把背包里的作物卖给商人', cat:'core', manual:true, tutorial:true },
+    { id:'tut_craft',parent:'tut_sell',       x:1060,  y:350, icon:'command_block', title:'合成系统',   desc:'① 按B打开背包界面 ② 找到背包左上角的2×2合成格 ③ 将原材料放入合成格，如放入1块原木 ④ 合成格右侧会自动显示成品：4块木板 ⑤ 点击成品即可收入背包，也可继续用木板合成其他物品', cat:'core', manual:true, tutorial:true },
     { id:'tut_wood', parent:'tut_craft',  x:1220,  y:350, icon:'oak_log',  title:'砍伐树木',   desc:'① 按数字键3选择斧头 ② 前往农场西北角的树场 ③ 点击树木，斧头会砍伐树木 ④ 砍倒后获得原木和少量橡果 ⑤ 每次砍伐消耗体力，注意观察体力条', cat:'core', manual:true, tutorial:true },
-    { id:'tut_inv',  parent:'tut_water',       x:660,  y:350, icon:'wheat_stage2', title:'背包操作',   desc:'① 按B键打开背包界面 ② 左键拖拽整堆物品到新位置 ③ 右键点击物品，拿走一半数量 ④ 长按左键并拖拽，可将物品均分到多个空格 ⑤ 底部9个快捷栏可快速切换工具', cat:'core', manual:true, tutorial:true },
+    { id:'tut_inv',  parent:'tut_water',       x:660,  y:350, icon:'book_purple', title:'背包操作',   desc:'① 按B键打开背包界面 ② 左键拖拽整堆物品到新位置 ③ 右键点击物品，拿走一半数量 ④ 长按左键并拖拽，可将物品均分到多个空格 ⑤ 底部9个快捷栏可快速切换工具', cat:'core', manual:true, tutorial:true },
 
     // —— 网关节点（独立放置，不连主线）——
-    { id:'g_farm',   parent:'tut_wood',      x:1140,  y:350, icon:'wheat_stage3', title:'▶ 播种耕作', desc:'完成本节点解锁「耕作」支线任务页。', cat:'core', track:{k:'plant', n:1}, manual:true },
+    { id:'g_farm',   parent:'tut_wood',      x:1140,  y:350, icon:'wheat_seeds', title:'▶ 播种耕作', desc:'完成本节点解锁「耕作」支线任务页。', cat:'core', track:{k:'plant', n:1}, manual:true },
     { id:'g_tools',  parent:'g_farm',      x:1300,  y:350, icon:'oak_log',  title:'▶ 置办农具', desc:'完成本节点解锁「工匠」支线任务页。', cat:'core', track:{k:'ownTool', tool:'axe'}, manual:true },
     { id:'g_forage', parent:'g_tools',      x:1380,  y:350, icon:'oak_log',     title:'▶ 林间初探', desc:'完成本节点解锁「采集」支线任务页。', cat:'core', track:{k:'chop', n:1}, manual:true },
     // —— 耕作支线（种植 → 收获，由主线「播种耕作」解锁）——
-    { id:'fa1',  parent:'g_farm',  x:80,  y:100, icon:'wheat_stage3', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
+    { id:'fa1',  parent:'g_farm',  x:80,  y:100, icon:'wheat_seeds', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗良种。', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:wheat', count:10}] } },
     { id:'fa2',  parent:'fa1',     x:155, y:100, icon:'小麦',        title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 30 金锭酬金。',       cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:30 } },
     // —— 采集支线（砍树 → 补种 → 积材，由主线「林间初探」解锁）——
     { id:'fo1',  parent:'g_forage', x:80,  y:100, icon:'oak_log', title:'林间驿站', desc:'为林间驿站供应 20 份原木修缮木屋，换取 5 颗橡果。', cat:'forage', manual:true, track:{k:'submit', item:'wood', n:20}, reward:{ items:[{id:'acorns', count:5}] } },
-    { id:'fo2',  parent:'fo1',     x:155, y:100, icon:'wheat_stage3',     title:'猎人补给', desc:'向深山猎人补给 40 份原木，换取 30 金锭犒赏。',           cat:'forage', manual:true, track:{k:'submit', item:'wood', n:40}, reward:{ money:30 } },
+    { id:'fo2',  parent:'fo1',     x:155, y:100, icon:'sunflower',     title:'猎人补给', desc:'向深山猎人补给 40 份原木，换取 30 金锭犒赏。',           cat:'forage', manual:true, track:{k:'submit', item:'wood', n:40}, reward:{ money:30 } },
     // —— 工匠支线（购斧 → 伐木，由主线「置办农具」解锁）——
     { id:'to1',  parent:'g_tools',  x:80,  y:100, icon:'crafting_arrow',     title:'木工坊供货', desc:'向木工坊交付 16 块木板，换回 10 份原木继续加工。',     cat:'tools', manual:true, track:{k:'submit', item:'planks', n:16}, reward:{ items:[{id:'wood', count:10}] } },
     { id:'to2',  parent:'to1',     x:155, y:100, icon:'command_block',     title:'建筑委托', desc:'承接镇上建筑委托，交付 32 块木板换取 40 金锭。',         cat:'tools', manual:true, track:{k:'submit', item:'planks', n:32}, reward:{ money:40 } },
@@ -202,10 +202,10 @@ const DATA = {
   // tab/selected 为选项卡底图贴图 key；icon 为该分类在选项卡上的代表物贴图 key。
   // 渲染时按数组次序拼成 Above_Left / Above_Middle×(N-2) / Above_Right 的小方格条。
   QUEST_TABS: [
-    { id:'core',   label:'入门指南', icon:'wooden_hoe', tab:'advancement_tab_above_left',  selected:'advancement_tab_above_left_selected' },
+    { id:'core',   label:'入门指南', icon:'book_purple', tab:'advancement_tab_above_left',  selected:'advancement_tab_above_left_selected' },
     // 支线选项卡：prereq 指向主线(入门)的「网关」任务 id，未完成前选项卡显示锁且不可点开；
     // 每个支线在主线各有一个专属网关(g_farm/g_forage/g_tools)，完成即解锁对应支线，其 desc 写明解锁提示。
-    { id:'farm',   label:'耕作',     icon:'wheat_stage3', tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_farm' },
+    { id:'farm',   label:'耕作',     icon:'wheat_seeds', tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_farm' },
     { id:'forage', label:'采集',     icon:'oak_log',     tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_forage' },
     { id:'tools',  label:'工匠',     icon:'oak_log',  tab:'advancement_tab_above_middle',  selected:'advancement_tab_above_middle_selected', prereq:'g_tools' },
   ],
