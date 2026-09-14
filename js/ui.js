@@ -6292,7 +6292,7 @@ const UI = {
 
     vis.forEach(n => {
 
-      if (!n.parent || !byId[n.parent] || n.tutorial) return;
+      if (!n.parent || !byId[n.parent]) return;
 
       const p = byId[n.parent];
 
