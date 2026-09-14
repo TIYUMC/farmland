@@ -195,7 +195,7 @@ const DATA = {
     { id:'fo1',  parent:'g_forage', x:80,  y:100, icon:'oak_log', title:'林间驿站', desc:'为林间驿站供应 20 份原木修缮木屋，换取 5 颗橡果。', cat:'forage', manual:true, track:{k:'submit', item:'wood', n:20}, reward:{ items:[{id:'acorns', count:5}] } },
     { id:'fo2',  parent:'fo1',     x:155, y:100, icon:'sunflower',     title:'猎人补给', desc:'向深山猎人补给 40 份原木，换取 30 金锭犒赏。',           cat:'forage', manual:true, track:{k:'submit', item:'wood', n:40}, reward:{ money:30 } },
     // —— 工匠支线（购斧 → 伐木，由主线「置办农具」解锁）——
-    { id:'to1',  parent:'g_tools',  x:80,  y:100, icon:'crafting_arrow',     title:'木工坊供货', desc:'向木工坊交付 16 块木板，换回 10 份原木继续加工。',     cat:'tools', manual:true, track:{k:'submit', item:'planks', n:16}, reward:{ items:[{id:'wood', count:10}] } },
+    { id:'to1',  parent:'g_tools',  x:80,  y:100, icon:'chest',     title:'木工坊供货', desc:'向木工坊交付 16 块木板，换回 10 份原木继续加工。',     cat:'tools', manual:true, track:{k:'submit', item:'planks', n:16}, reward:{ items:[{id:'wood', count:10}] } },
     { id:'to2',  parent:'to1',     x:155, y:100, icon:'command_block',     title:'建筑委托', desc:'承接镇上建筑委托，交付 32 块木板换取 40 金锭。',         cat:'tools', manual:true, track:{k:'submit', item:'planks', n:32}, reward:{ money:40 } },
   ],
   // 选项卡（分类页签）。id 与 QUESTS[].cat 对应；
