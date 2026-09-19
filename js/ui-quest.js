@@ -188,6 +188,9 @@ const _questMethods = {
 
       if (p.cat !== n.cat && !n.tutorial) return;   // 跨分类父节点（如主线→教程）允许连线，其他跨分类不画
 
+      // 链之间不画连线（主线 y=350/500 与解锁链 y=700 分开显示）
+      if (Math.abs(p.y - n.y) > 200) return;
+
       const path = document.createElementNS(NS, 'path');
 
       // 直连线：父节点中心 → 子节点中心，一条斜直线（用户要求「直直的，不要弯」）
@@ -380,11 +383,12 @@ const _questMethods = {
 
       }
 
-      // —— 奖励（无则显示「无」）——
-
-      const rewardText = this._rewardText(node.reward);
-
-      const rewardSec = rewardText ? rewardText : '无';
+      // —— 奖励（无则显示「无」；已完成则隐藏）——
+      let rewardSec = '无';
+      if (!node.done) {
+        const rewardText = this._rewardText(node.reward);
+        rewardSec = rewardText ? rewardText : '无';
+      }
 
       // —— 前置 / 后置（无则显示「无」）——
 
@@ -773,7 +777,7 @@ const _questMethods = {
 
         const ch = (this._questBBox.maxY - this._questBBox.minY) || 1;
 
-        P.scale = Math.min(1.25, Math.max(0.5, _band.w / cw * 0.5, _band.h / ch * 0.5));
+        P.scale = Math.min(1.5, Math.max(0.5, _band.w / cw * 0.75, _band.h / ch * 0.75));
 
       }
 
