@@ -121,7 +121,7 @@
       const k = f.age / f.life;
       const a = k < 0.15 ? k / 0.15 : (k > 0.7 ? (1 - (k - 0.7) / 0.3) : 1);
       ctx.globalAlpha = Math.max(0, a);
-      ctx.font = `bold ${f.size}px "Segoe UI", system-ui, sans-serif`;
+      ctx.font = `bold ${f.size}px "VT323", monospace`;
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
       ctx.strokeText(f.text, f.x, f.y);
       ctx.fillStyle = f.color;

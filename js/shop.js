@@ -357,7 +357,7 @@ UI._drawShopOverlay = function() {
   const txt = (str, tx, ty, size, color, align) => {
     const c = toC(tx, ty);
     ctx.fillStyle = color; ctx.textAlign = align || 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `${size * S}px "Microsoft YaHei", "Courier New", sans-serif`;
+    ctx.font = `${size * S}px "VT323", monospace`;
     ctx.fillText(str, c.x, c.y);
   };
 
