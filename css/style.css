@@ -26,7 +26,7 @@
 body {
   background: var(--bg-dark);
   color: var(--text);
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: 'VT323', 'Courier New', monospace;
   overflow: hidden;
   width: 100vw; height: 100vh;
 }
@@ -670,7 +670,7 @@ body {
 /* 手动成就「领取奖励」按钮：MC 风木质按钮，无 emoji（弹窗背景已用 enchantment 素材） */
 .quest-claim-btn {
   margin-top: 9px; padding: 6px 16px;
-  font: bold 14px/1.2 "Microsoft YaHei", "PingFang SC", sans-serif;
+  font: bold 14px/1.2 "Courier New", monospace;
   color: #fff; text-shadow: 1px 1px 2px #000;
   background: linear-gradient(#7a5a30, #4a3618);
   border: 2px solid #241808; border-radius: 4px;
@@ -1006,7 +1006,7 @@ body {
 }
 #title-splash {
   position: absolute;
-  font-family: 'Courier New', monospace;
+  font-family: 'VT323', 'Courier New', monospace;
   font-size: 14px;
   color: #fffacd;
   text-shadow: 1px 1px 0 #3f3f3f;
