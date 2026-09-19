@@ -2947,7 +2947,7 @@ const UI = {
 
     ASSETS.draw(ctx, iconKey, dx, dy, dw, dh, false) // 关插值：消除缩小贴图边缘黑色渗边 + 移动颤抖
 
-      || (ctx.font = `${r.h * 0.5}px sans-serif`, this._setTextCenter(ctx),
+      || (ctx.font = `${r.h * 0.5}px "VT323", monospace`, this._setTextCenter(ctx),
 
           ctx.fillStyle = '#fff', ctx.fillText(r.dir === 'left' ? '←' : '→', cx, cy));
 
@@ -3502,7 +3502,7 @@ const UI = {
 
     if (!drawn) {
 
-      ctx.font = `${iw * 0.8}px sans-serif`;
+      ctx.font = `${iw * 0.8}px "VT323", monospace`;
 
       this._setTextCenter(ctx);
 
@@ -4784,7 +4784,7 @@ const UI = {
 
     const size = cs * scale;
 
-    ctx.font = `${size}px sans-serif`;
+    ctx.font = `${size}px "VT323", monospace`;
 
     this._setTextCenter(ctx);
 

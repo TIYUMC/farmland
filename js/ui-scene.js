@@ -138,7 +138,7 @@ const _sceneMethods = {
 
     if (!drawn) {
 
-      ctx.font = `${iw * 0.8}px sans-serif`;
+      ctx.font = `${iw * 0.8}px "VT323", monospace`;
 
       this._setTextCenter(ctx);
 
