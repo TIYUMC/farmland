@@ -945,7 +945,7 @@ body {
   pointer-events: none;
 }
 #title-logo {
-  font-family: 'Bebas Neue', sans-serif;
+  font-family: 'Russo One', sans-serif;
   font-size: 72px;
   font-weight: bold;
   color: var(--title-color);
@@ -1001,7 +1001,7 @@ body {
   font-size: 28px;
   font-weight: bold;
   color: var(--version-color);
-  font-family: 'Bebas Neue', sans-serif;
+  font-family: 'Russo One', sans-serif;
   letter-spacing: 2px;
 }
 
