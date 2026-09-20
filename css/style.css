@@ -227,7 +227,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 3px 6px;
-  font-size: 16px;
+  font-size: 22px;
   font-family: 'VT323', 'Courier New', monospace;
   cursor: pointer;
   max-width: 92px;
@@ -280,7 +280,7 @@ body {
 }
 /* 工具按钮文字：下栏默认 13px，上栏（调试等）16px */
 .tool-name { font-size: 13px; margin-top: 2px; }
-#hud-bar .tool-btn .tool-name { font-size: 16px; }
+#hud-bar .tool-btn .tool-name { font-size: 22px; }
 .tool-separator {
   width: 1px; height: 32px;
   background: var(--border);
@@ -323,7 +323,7 @@ body {
   padding: 8px 20px;
   background: rgba(0,0,0,0.82);
   color: var(--text);
-  font-size: 16px;
+  font-size: 22px;
   border-radius: 10px;
   text-align: center;
   pointer-events: none;
@@ -689,11 +689,11 @@ body {
 .quest-ds { color: #dfe; font-size: 14px; }
 /* 悬停提示框：默认隐藏，鼠标移上才显示。节点详情（长文字）与选项卡解锁条件共用同一套外观。
    短名仍常驻在选项卡上，不进弹窗；弹窗只承载详情：节点=标题+描述+前置/可解锁，选项卡=解锁条件/进度。 */
-.quest-tip, .quest-tab-tip { position: fixed; z-index: 200; pointer-events: none; max-width: 240px; background-color: rgba(20,18,28,.95); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); background-size: 100% 100%; background-position: center; background-repeat: no-repeat; padding: 10px 14px; color: #fff; font-size: 16px; line-height: 1.5; text-shadow: 1px 1px 2px #000; opacity: 0; visibility: hidden; transform: translateY(6px); transition: opacity .2s cubic-bezier(0.16,1,0.3,1), transform .2s cubic-bezier(0.16,1,0.3,1), visibility .2s; }
+.quest-tip, .quest-tab-tip { position: fixed; z-index: 200; pointer-events: none; max-width: 240px; background-color: rgba(20,18,28,.95); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); background-size: 100% 100%; background-position: center; background-repeat: no-repeat; padding: 10px 14px; color: #fff; font-size: 22px; line-height: 1.5; text-shadow: 1px 1px 2px #000; opacity: 0; visibility: hidden; transform: translateY(6px); transition: opacity .2s cubic-bezier(0.16,1,0.3,1), transform .2s cubic-bezier(0.16,1,0.3,1), visibility .2s; }
 .quest-tip.show, .quest-tab-tip.show { opacity: 1; visibility: visible; transform: translateY(0); }
 /* 领取弹窗需可点按钮：开启 claimable 时让 tip 接收指针事件（默认 none，避免遮挡悬停） */
 .quest-tip.claimable { pointer-events: auto; }
-.quest-tip .quest-ttl { font-size: 16px; }
+.quest-tip .quest-ttl { font-size: 22px; }
 /* 手动成就「领取奖励」按钮：MC 风木质按钮，无 emoji（弹窗背景已用 enchantment 素材） */
 .quest-claim-btn {
   margin-top: 9px; padding: 6px 16px;
@@ -945,8 +945,8 @@ body {
   pointer-events: none;
 }
 #title-logo {
-  font-family: 'Press Start 2P', sans-serif;
-  font-size: 32px;
+  font-family: 'Silkscreen', sans-serif;
+  font-size: 56px;
   font-weight: bold;
   color: var(--title-color);
   text-shadow:
@@ -998,10 +998,10 @@ body {
 }
 #title-version {
   margin-top: 28px;
-  font-size: 16px;
+  font-size: 22px;
   font-weight: bold;
   color: var(--version-color);
-  font-family: 'Press Start 2P', sans-serif;
+  font-family: 'Silkscreen', sans-serif;
   letter-spacing: 2px;
 }
 
