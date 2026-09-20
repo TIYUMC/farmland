@@ -29,7 +29,7 @@
   --title-shadow3: #ff3300;
   --title-stroke: #8b4513;
   --title-highlight: #ffe680;
-  --version-color: #b0a080;
+  --version-color: #d4a84b;
   /* ===== 动画缓动 ===== */
   --ease-smooth: cubic-bezier(0.16,1,0.3,1);
   --ease-bounce: cubic-bezier(0.34,1.56,0.64,1);
@@ -998,10 +998,12 @@ body {
 }
 #title-version {
   margin-top: 28px;
-  font-size: 32px;
+  font-size: 26px;
   font-weight: bold;
   color: var(--version-color);
   font-family: 'VT323', 'Courier New', monospace;
+  text-shadow: 0 0 10px rgba(212, 168, 75, 0.5);
+  letter-spacing: 2px;
 }
 
 /* ===== 全局动画增强 ===== */
