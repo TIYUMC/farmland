@@ -102,6 +102,7 @@ const UI = {
 
   _animRaf: null,      // requestAnimationFrame 句柄，用于停止动画循环
   _isPageVisible: true, // 页面是否可见
+  _isMobile: false,    // 是否为移动设备（性能优化）
   _hoverRaf: null,     // 悬停动画帧句柄
 
 
@@ -500,15 +501,6 @@ const UI = {
 
     });
 
-    document.addEventListener('keydown', (e) => {
-
-      if (e.key === 'Escape') { this.closeInventory(); this.closeShop(); this.closeSummary(); }
-
-      else if (e.key === 'r' || e.key === 'R') { this._toggleRain(); }
-
-    });
-
-
 
     // 持续重绘循环：驱动未浇水作物的闪烁动画
 
@@ -538,6 +530,8 @@ const UI = {
     this._shake     = new Juice.Shake();
 
     this._lastFrame = 0;
+    this._isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+    this._renderTick = 0;  // 移动端隔帧计数器
 
     this._navHoverCur = 1;
 
@@ -829,9 +823,11 @@ const UI = {
 
 
 
-    // 停驻雪花老化：每帧、跨季节推进 f.age（_drawSnow 仅冬天，不能在里面推进），使春天也能 fade 消失
-
-    this._tickLandedSnow(dt);
+    // 停驻雪花老化：仅冬季运行时更新状态（非冬季跳过以节省CPU）
+    if (this._isWinter()) {
+      this._tickLandedSnow(dt);
+    }
+    // 停驻雪花绘制：仅冬季且有数据时绘制
 
     // 停驻在地面的雪花：画在积雪地面层之上、植被层之下，所以不盖住草/花/树
 
@@ -854,17 +850,20 @@ const UI = {
 
     if (this._grassShakes && this._grassShakes.length) this._drawGrassShakes(ctx, dt);
 
-
-
-    // 动态层：未浇水作物的呼吸高亮（逐帧动画，必须每帧重画）——仅主农场有耕地/浇水概念
-
-    if (this.scene === 'farm') this._drawWaterOverlay(ctx, cs);
-
-
-
-    // 动态层：耕地的呼吸描边——"玩家翻过的田"边界签名，与未浇水高亮同款呼吸节奏（方案：A3 + 同款闪烁）
-
-    if (this.scene === 'farm') this._drawFarmlandOverlay(ctx, cs);
+    // 动态层：未浇水作物的呼吸高亮 —— 移动端隔帧渲染以减少CPU占用
+    if (this.scene === 'farm') {
+      if (this._isMobile) {
+        if (!this._renderTick) this._renderTick = 0;
+        this._renderTick++;
+        if (this._renderTick % 2 === 0) {
+          this._drawWaterOverlay(ctx, cs);
+          this._drawFarmlandOverlay(ctx, cs);
+        }
+      } else {
+        this._drawWaterOverlay(ctx, cs);
+        this._drawFarmlandOverlay(ctx, cs);
+      }
+    }
 
 
 
@@ -1161,31 +1160,30 @@ const UI = {
    *  视觉淡出(fade)由 _drawSnowLanded 负责，本函数只推进状态并从数组移除已吃雪花。 */
 
   _tickLandedSnow(dt) {
-
-    if (!this._snowFlakes) return;
+    // 仅在冬季运行雪花状态更新，其他季节完全跳过
+    if (!this._snowFlakes || !this._isWinter()) return;
 
     const cs = this.cellSize;
-
     const FADE_DUR = 8;
+    const ground = this._snowGround;
+    const flakes = this._snowFlakes;
+    let dirty = false;
 
-    for (const f of this._snowFlakes) {
-
-      if (f._eaten || !f.stopped) continue;            // 只推进「已停驻且未吃」的雪花
+    for (let i = 0; i < flakes.length; i++) {
+      const f = flakes[i];
+      if (f._eaten || !f.stopped) continue;
 
       f.age = (f.age || 0) + dt;
-
       const c = Math.floor(f.landX / cs), r = Math.floor(f.landY / cs);
-
-      const covered = this._snowGround && this._snowGround.some(s => s.c === c && s.r === r && (s.pixelStep || 1) >= cs);
-
-      if (covered || f.age >= FADE_DUR) f._eaten = true;
-
+      const covered = ground && ground.some(s => s.c === c && s.r === r && (s.pixelStep || 1) >= cs);
+      if (covered || f.age >= FADE_DUR) {
+        f._eaten = true;
+        dirty = true;
+      }
     }
 
-    // 被积雪吃掉的雪花从数组移除（视觉已消失；stopped 数随之减少，补充逻辑会继续下雪）
-
-    if (this._snowFlakes.some(f => f._eaten)) this._snowFlakes = this._snowFlakes.filter(f => !f._eaten);
-
+    // 仅在有雪花被清除时才重建数组（避免每帧分配）
+    if (dirty) this._snowFlakes = flakes.filter(f => !f._eaten);
   },
 
 
@@ -2103,6 +2101,7 @@ const UI = {
   /** 推进落叶：仅秋季更新；非秋季让已有叶片自然落完（不突兀清空）。 */
 
   _updateLeaves(dt, W, H) {
+    // 性能优化：非秋季且无残留落叶时完全跳过
     if (!this._isAutumn() && (!this._fallingLeaves || this._fallingLeaves.length === 0)) return;
 
     if (this._isAutumn()) {
@@ -2827,10 +2826,12 @@ const UI = {
   _navHit(x, y) {
     const r = this._navRect();
     if (!this._hitRect(x, y, r)) return false;
-    // 树场未解锁时禁止进入（显示锁图标）
+    // 树场未解锁时禁止进入，调试模式下可绕过
     if (r.dir === 'left') {
       const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
-      if (unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest)) return false;
+      const questNotDone = unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest);
+      const isDebug = typeof Engine !== 'undefined' && Engine.debugFast;
+      if (questNotDone && !isDebug) return false;
     }
     return true;
   },
@@ -2953,9 +2954,11 @@ const UI = {
 
     ctx.restore();
 
-    // 树场未解锁时：绘制半透明遮罩 + 锁图标
+    // 树场未解锁时：绘制半透明遮罩 + 锁图标（调试模式跳过）
     const treeFarmUnlock = (typeof DATA !== 'undefined' && DATA.TREEFARM && DATA.TREEFARM.unlockOn);
-    const treeFarmLocked = (r.dir === 'left' && treeFarmUnlock && typeof Quest !== 'undefined' && !Quest.isDone(treeFarmUnlock));
+    const isDebug = typeof Engine !== 'undefined' && Engine.debugFast;
+    const questNotDone = treeFarmUnlock && typeof Quest !== 'undefined' && !Quest.isDone(treeFarmUnlock);
+    const treeFarmLocked = r.dir === 'left' && questNotDone && !isDebug;
     if (treeFarmLocked) {
       const lockImg=(typeof ASSETS!=='undefined'&&ASSETS.get)?ASSETS.get('Icon_Locked'):null;
       if (lockImg){
@@ -4588,7 +4591,7 @@ const UI = {
     let lastRenderTime = 0;
     // 检测是否为移动端
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-    const minFrameInterval = isMobile ? 32 : 16; // 移动端30fps，桌面60fps
+    const minFrameInterval = isMobile ? 50 : 16; // 移动端20fps降频，桌面60fps
 
     const loop = () => {
 
@@ -5501,7 +5504,7 @@ const UI = {
 
     }
 
-    // 空格：种橡果（需先在背包选中「橡果」，或快捷键切到橡果工具）
+    // 橡果：选中药桶后点击下方快捷栏橡果格，再点击空地种植
 
     if (tool === 'acorn') {
 

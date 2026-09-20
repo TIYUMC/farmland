@@ -58,38 +58,9 @@
     UI.render();
     _showTitle();
 
-    // 键盘快捷键
-    document.addEventListener('keydown', (e) => {
-      // 商店打开时：方向键选交易、S/Esc 关闭，屏蔽其它游戏快捷键
-      if (UI._shopOpen) {
-        if (e.key === 'ArrowDown') { UI._changeShopSel(1); e.preventDefault(); return; }
-        if (e.key === 'ArrowUp')   { UI._changeShopSel(-1); e.preventDefault(); return; }
-        if (e.key === 's' || e.key === 'S') { UI.closeShop(); return; }
-        if (e.key === 'Escape') return; // 由 UI 的 keydown 监听统一处理
-        return;
-      }
-      switch (e.key) {
-        case '1': _selectTool('hoe'); break;
-        case '2': _selectTool('water'); break;
-        case '3': _selectTool('axe'); break;
-        case 'b':
-        case 'B':
-          if (UI._shopOpen) UI.closeShop();
-          else if (UI._inventoryOpen) UI.closeInventory();
-          else UI.openInventory();
-          break;
-        case 's':
-        case 'S': UI.openShop(); break;
-        case 'z':
-        case 'Z': Engine.sleep(); break; // B4 修复：z 键主动睡觉（立即结算并进入第二天）
-        case 't':
-        case 'T': _toggleTreeFarm(); break; // 主农场 ↔ 树场 切换
-      }
-    });
-
     // 背包按钮快捷
     _addInventoryButton();
-    // 商店按钮：开关村民商店（S 键开；商店开着时 B 键关；点面板外或 Esc 亦可关）
+    // 商店按钮：开关村民商店；点面板外或点击其他区域亦可关闭
     const btnShop = document.getElementById('btn-shop');
     if (btnShop) btnShop.addEventListener('click', () => {
       if (UI._shopOpen) UI.closeShop(); else UI.openShop();
@@ -106,6 +77,8 @@
       Engine.setDebugFast(on);
       invDebug.classList.toggle('debug-on', on);
       if (on && typeof UI.closeSummary === 'function') UI.closeSummary();
+      // 关闭调试时若在树场，强制返回农场
+      if (!on && typeof UI !== 'undefined' && UI.scene === 'treeFarm') UI.toggleScene();
       UI.showStatus(on ? '⚡ 调试快进：0.5 秒 = 1 天' : '调试快进已关闭', 1200);
     });
     // 调试·跳季下拉（底部）：直接跳到指定季节的第 1 天
@@ -411,7 +384,7 @@
     if (iconEl) _setIconInner(iconEl, 'bundle_filled', '背包', 'tool-icon-img');
   }
 
-  /** 主农场 ↔ 树场 切换（快捷键 T 共用；工具栏的树场按钮已移除，导航改由画布左上角箭头承担）。 */
+  /** 主农场 ↔ 树场 切换（工具栏的树场按钮已移除，导航改由画布左上角箭头承担）。 */
   function _toggleTreeFarm() {
     if (typeof UI === 'undefined' || !UI.toggleScene) return;
     UI.toggleScene();

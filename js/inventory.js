@@ -8,7 +8,7 @@
  *  ① 开关：openInventory · closeInventory
  *  ② 渲染：renderInventory · _makeSlot
  *  ③ MC 鼠标逻辑：_invMouseDown · _invPickUp · _invDeposit · _invMouseOver
- *                 · _invMouseUp · _invDblClick · _invShiftTransfer
+ *                 · _invMouseUp · _invDblClick
  *                 · _invReturnHeld · _invHeldGhost · _slotIndexFromEvent · _sameIdentity
  *  ④ 合成格：_craftGrid … _renderCraft（2×2，改动后重建 invSlots 以同步数量）
  */
@@ -386,70 +386,9 @@ UI._invDblClick = function(index) {
   this._invRenderAndGhost();
 };
 
-/** Shift+左键：快速转移到另一侧网格（主栏↔快捷栏） */
-UI._invShiftTransfer = function(index) {
-  const slot = Player.invSlots[index];
-  if (!slot) return;
-  const toHotbar = index < 27;
-  const start = toHotbar ? 27 : 0, end = toHotbar ? 36 : 27;
-  // 先合并进同类有空位的格
-  for (let i = start; i < end; i++) {
-    const o = Player.invSlots[i];
-    if (o && this._sameIdentity(o, slot) && o.kind === 'stack' && o.count < 64) {
-      const mv = Math.min(64 - o.count, slot.count);
-      o.count += mv; slot.count -= mv;
-      this._afterInvChange(i);
-      if (slot.count <= 0) { Player.invSlots[index] = null; this._afterInvChange(index); return; }
-    }
-  }
-  // 再放进第一个空格
-  for (let i = start; i < end; i++) {
-    if (!Player.invSlots[i]) {
-      Player.invSlots[i] = slot;
-      Player.invSlots[index] = null;
-      this._afterInvChange(i);
-      this._afterInvChange(index);
-      return;
-    }
-  }
-  // 没位置：留在原地
-};
-
-/** 数字键 1-9：把光标物移到对应快捷栏格（原物换到光标） */
-UI._invNumberKey = function(n) {
-  if (!this._invHeld) return;
-  const idx = 27 + (n - 1);
-  const cur = Player.invSlots[idx];
-  Player.invSlots[idx] = this._invHeld;
-  this._invHeld = cur;                  // 原物到光标（空则光标清空）
-  this._afterInvChange(idx);
-  this._invRenderAndGhost();
-};
-
-/** Q：丢弃光标物（本游戏无地面，退回背包首个空格/同类合并，不丢） */
-UI._invDropHeld = function() {
-  if (!this._invHeld) return;
-  const held = this._invHeld;
-  // 优先放回原位（若空）
-  if (this._dragIndex != null && !Player.invSlots[this._dragIndex]) {
-    Player.invSlots[this._dragIndex] = held; this._invHeld = null; this._afterInvChange(this._dragIndex); this._invRenderAndGhost(); return;
-  }
-  // 首个空格
-  for (let i = 0; i < 36; i++) {
-    if (!Player.invSlots[i]) { Player.invSlots[i] = held; this._invHeld = null; this._afterInvChange(i); this._invRenderAndGhost(); return; }
-  }
-  // 合并进同类
-  for (let i = 0; i < 36; i++) {
-    const o = Player.invSlots[i];
-    if (o && this._sameIdentity(o, held) && o.kind === 'stack' && o.count < 64) {
-      const mv = Math.min(64 - o.count, held.count);
-      o.count += mv; held.count -= mv; this._afterInvChange(i);
-      if (held.count <= 0) { this._invHeld = null; this._invRenderAndGhost(); return; }
-    }
-  }
-};
-
-/** 关背包/点背景：把光标物退回背包（不丢） */
+/** 主栏↔快捷栏双向转移：
+ *  左键点击空格 → 拿起；左键点击有物格 → 放下/均分/取半（MC逻辑）
+ *  右键点击空格 → 取半/逐个；右键点击有物格 → 放1个 */
 UI._invReturnHeld = function() {
   if (!this._invHeld) return;
   const held = this._invHeld;
@@ -537,10 +476,6 @@ UI._invBindOnce = function() {
       const idx = this._slotIndexFromEvent(e);
       if (idx == null) return;
       e.preventDefault();
-      // Shift+左键 快速转移（光标空且本格有物时）
-      if (e.shiftKey && !this._invHeld && Player.invSlots[idx]) {
-        this._invShiftTransfer(idx); this._invRenderAndGhost(); return;
-      }
       // 点击快捷栏（idx >= 27）：拿起物品并选中工具
       if (idx >= 27 && idx < 36 && !this._invHeld) {
         Player._selectedInvSlot = idx;
@@ -669,12 +604,6 @@ UI._invBindOnce = function() {
     this._touchIdx = null;
     this._touchHeld = false;
   }, { passive: false });
-  // 键盘：数字 1-9 移物到快捷栏、Q 丢弃光标物
-  window.addEventListener('keydown', (e) => {
-    if (!this._inventoryOpen) return;
-    if (e.key >= '1' && e.key <= '9') { this._invNumberKey(parseInt(e.key, 10)); }
-    else if (e.key === 'q' || e.key === 'Q') { this._invDropHeld(); }
-  });
 };
 
 
