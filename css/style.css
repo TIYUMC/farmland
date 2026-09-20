@@ -945,8 +945,8 @@ body {
   pointer-events: none;
 }
 #title-logo {
-  font-family: 'Russo One', sans-serif;
-  font-size: 72px;
+  font-family: 'Press Start 2P', sans-serif;
+  font-size: 32px;
   font-weight: bold;
   color: var(--title-color);
   text-shadow:
@@ -998,10 +998,10 @@ body {
 }
 #title-version {
   margin-top: 28px;
-  font-size: 28px;
+  font-size: 16px;
   font-weight: bold;
   color: var(--version-color);
-  font-family: 'Russo One', sans-serif;
+  font-family: 'Press Start 2P', sans-serif;
   letter-spacing: 2px;
 }
 
