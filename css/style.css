@@ -945,8 +945,8 @@ body {
   pointer-events: none;
 }
 #title-logo {
-  font-family: 'Silkscreen', cursive;
-  font-size: 56px;
+  font-family: 'VT323', monospace;
+  font-size: 72px;
   font-weight: bold;
   color: var(--title-color);
   text-shadow:
@@ -998,10 +998,10 @@ body {
 }
 #title-version {
   margin-top: 28px;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: bold;
   color: var(--version-color);
-  font-family: 'Silkscreen', cursive;
+  font-family: 'VT323', 'Courier New', monospace;
   letter-spacing: 2px;
 }
 
