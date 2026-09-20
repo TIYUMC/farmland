@@ -945,8 +945,8 @@ body {
   pointer-events: none;
 }
 #title-logo {
-  font-family: 'Pixelify Sans', monospace;
-  font-size: 64px;
+  font-family: 'Silkscreen', cursive;
+  font-size: 56px;
   font-weight: bold;
   color: var(--title-color);
   text-shadow:
@@ -998,11 +998,10 @@ body {
 }
 #title-version {
   margin-top: 28px;
-  font-size: 26px;
+  font-size: 22px;
   font-weight: bold;
   color: var(--version-color);
-  font-family: 'VT323', 'Courier New', monospace;
-  text-shadow: 0 0 10px rgba(212, 168, 75, 0.5);
+  font-family: 'Silkscreen', cursive;
   letter-spacing: 2px;
 }
 
