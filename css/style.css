@@ -945,8 +945,8 @@ body {
   pointer-events: none;
 }
 #title-logo {
-  font-family: 'Press Start 2P', monospace;
-  font-size: 36px;
+  font-family: 'Anton', sans-serif;
+  font-size: 64px;
   font-weight: bold;
   color: var(--title-color);
   text-shadow:
@@ -998,10 +998,10 @@ body {
 }
 #title-version {
   margin-top: 28px;
-  font-size: 16px;
+  font-size: 22px;
   font-weight: bold;
   color: var(--version-color);
-  font-family: 'Press Start 2P', monospace;
+  font-family: 'Anton', sans-serif;
   letter-spacing: 2px;
 }
 
