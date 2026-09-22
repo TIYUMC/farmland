@@ -1002,7 +1002,7 @@ body {
   font-weight: bold;
   color: var(--version-color);
   font-family: 'Silkscreen', sans-serif;
-  -webkit-text-stroke: 0.2px #ffffff;
+  -webkit-text-stroke: 0.1px #ffffff;
   letter-spacing: 2px;
 }
 
