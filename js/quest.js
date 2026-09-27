@@ -84,7 +84,7 @@ const Quest = {
       globalThis.UI.showStatus('🌟 任务达成：' + q.title, 1600);
     }
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showAchievement) {
-      globalThis.UI.showAchievement(q.title, 'nether_star', 3500);
+      globalThis.UI.showAchievement(q.title, q.icon, 3500);
     }
   },
 
@@ -158,7 +158,7 @@ const Quest = {
       if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
     }
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showStatus) globalThis.UI.showStatus('成就达成：' + q.title, 1600);
-    if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showAchievement) globalThis.UI.showAchievement(q.title, 'nether_star', 3500);
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI.showAchievement) globalThis.UI.showAchievement(q.title, q.icon, 3500);
     return true;
   },
 

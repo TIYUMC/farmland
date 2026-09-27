@@ -719,6 +719,7 @@ UI._renderBottomHotbar = function() {
   const grid = document.getElementById('bottom-hotbar');
   if (!grid) return;
   if (!Player.invSlots) Player._rebuildInvSlots();
+  else Player._dedupeHotbarMoney(); // 渲染前兜底去重：无论何种路径，快捷栏至多显示一个金锭
   UI._bindBottomHotbar();
   grid.innerHTML = '';
   for (let i = 0; i < 9; i++) {
@@ -728,6 +729,46 @@ UI._renderBottomHotbar = function() {
     cell.className = 'hotbar-cell';
     if (i === Player._hotbarSel) cell.classList.add('selected');
     cell.dataset.index = i;
+    // 商店打开时启用拖拽，允许从快捷栏拖金锭到商店输入框
+    if (UI._shopOpen && slot) {
+      cell.setAttribute('draggable', 'true');
+      cell.addEventListener('dragstart', (e) => {
+        const key = slot.kind === 'resource' ? 'money' :
+                    slot.kind === 'tool' ? slot.toolId :
+                    slot.seedId;
+        const count = slot.count || 1;
+        UI._dragKey = key;
+        UI._dragCount = count;
+        Player._reservedHotbarIdx = i; // 记录被拖走的快捷栏槽位
+        // 立即从快捷栏移除，让金锭视觉上消失
+        if (slot.kind === 'resource' && slot.id === 'money') {
+          Player._hotbarSlots[i] = null;
+          Player.invSlots[27 + i] = null;
+          // 直接清空该格DOM，不重建整个快捷栏
+          cell.innerHTML = '';
+        }
+        if (e.dataTransfer) {
+          e.dataTransfer.setData('text/plain', key);
+          e.dataTransfer.effectAllowed = 'move';
+        }
+      });
+      cell.addEventListener('dragend', () => {
+        // 拖拽取消时清除保留槽位并恢复金锭
+        if (!UI._shopReservedKey) {
+          Player._reservedHotbarIdx = null;
+          // 仅当快捷栏内确实没有金锭时，才把金锭放回原槽（防止出现两组金锭）
+          const hasMoney = Player._hotbarSlots.some(s => s && s.kind === 'resource' && s.id === 'money');
+          if (!hasMoney && Player.invSlots[27 + i] === null && slot && slot.kind === 'resource' && slot.id === 'money') {
+            if (Player.money > 0) {
+              Player._hotbarSlots[i] = { kind: 'resource', id: 'money', key: 'money', label: '金锭', count: Player.money };
+              Player.invSlots[27 + i] = Player._slotFromIdentity(Player._hotbarSlots[i]);
+            }
+          }
+        }
+        UI._dragKey = null;
+        UI._dragCount = 0;
+      });
+    }
     const bgKey = (i === Player._hotbarSel) ? 'gamemode_switcher_selection' : 'gamemode_switcher_slot';
     const bgSrc = this._assetURL(bgKey);
     if (bgSrc) cell.style.backgroundImage = 'url("' + bgSrc + '")';

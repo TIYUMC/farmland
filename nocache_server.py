@@ -1,7 +1,7 @@
 import http.server, socketserver, os
 
 PORT = 3000
-ROOT = r"C:\Users\21430\Desktop\星露谷\stardew-web"
+ROOT = r"C:\Users\21430\Desktop\Terraform\游戏源码文件夹"
 
 class NoCacheHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):

@@ -20,6 +20,9 @@
 UI.openShop = function() {
   if (this._shopOpen) return;
   this._shopOpen = true;
+  // 打开商店时隐藏主页底部快捷栏：商店界面内已自带快捷栏（拖拽源），避免两份同时显示造成"两组金锭"
+  const hb = document.getElementById('bottom-hotbar');
+  if (hb) hb.style.display = 'none';
   if (this._inventoryOpen) this.closeInventory(); // 打开商店时收起背包
   this._trades = this._buildTrades();
   this._shopSel = this._trades.length ? this._trades[0].id : null;
@@ -27,9 +30,11 @@ UI.openShop = function() {
   this._shopScroll = 0;       // 每次开店都从第一行看起
   this._shopBarDrag = false;
   this._resetToolParts();
-  // 确保快捷栏数据就绪并刷新显示
-  if (!Player.invSlots) Player._rebuildInvSlots();
+  // 确保快捷栏数据就绪并刷新显示（每次开店都重建，确保数据最新）
+  Player._rebuildInvSlots();
   if (typeof UI !== 'undefined' && UI._renderBottomHotbar) UI._renderBottomHotbar();
+  // 标记需要重建，确保G块和快捷栏首次渲染
+  this._shopDirty = true;
   this._markShopDirty();
 };
 
@@ -38,6 +43,12 @@ UI.openShop = function() {
 UI.closeShop = function() {
   if (!this._shopOpen) return;
   this._shopOpen = false;
+  // 恢复主页底部快捷栏显示
+  const hb = document.getElementById('bottom-hotbar');
+  if (hb) {
+    hb.style.display = '';
+    if (typeof UI._renderBottomHotbar === 'function') UI._renderBottomHotbar();
+  }
   this._shopLayout = null;
   this._shopDroppedId = null;
   this._shopReservedKey = null;
@@ -168,7 +179,7 @@ UI._executeTrade = function(t) {
       const bdef = DATA.CROPS[t.cropId];
       if (bdef && !bdef.growDays) Player.addToInventory(t.cropId, 1);
       else Player.addSeeds(t.cropId, 1);
-      Player._rebuildInvSlots();
+      // addSeeds/addToInventory 内部已调用 _rebuildInvSlots，无需重复调用
       UI._renderBottomHotbar();
     } else {
       const r = Economy._resolveSellable(t.cropId);
@@ -219,14 +230,18 @@ UI._executeTrade = function(t) {
       this._resetShopDropped();
     }
     // 刷新背包缓存和显示（金锭/工具等立即同步）
-    Player._rebuildInvSlots();
+    // 注意：buySeed 内部已调用 spendMoney → _rebuildInvSlots，无需重复调用
     if (typeof UI !== 'undefined') {
       if (UI._inventoryOpen && UI.renderInventory) UI.renderInventory();
       if (UI._renderBottomHotbar) UI._renderBottomHotbar();
+      // 刷新商店G块（背包网格），确保购买后物品可见
+      this._markShopDirty();
     }
   } else {
     this.showStatus(`❌ ${res ? res.reason : '交易失败'}`, 1200);
   }
+  // 清除快捷栏保留槽位，允许后续正常填充
+  Player._reservedHotbarIdx = null;
   this._refreshTradesAfterDeal();
 };
 
@@ -249,6 +264,7 @@ UI._executeTrade = function(t) {
  *   G 下：背包 9×4 —— 按 64 堆叠，并扣除已拖入输入框的份额
  */
 UI._drawShopOverlay = function() {
+  console.log("[SHOP_DEBUG] _drawShopOverlay called, this._shopDirty =", this._shopDirty, "this === UI?", this === window.UI);
   const ctx = this.ctx;
   const W = this.canvas.width, H = this.canvas.height;
 
@@ -277,8 +293,11 @@ UI._drawShopOverlay = function() {
   // 仅在交易状态变化（开关店/切换选中/成交/窗口缩放）时重建 DOM 图标，
   // 避免每帧（动画循环 ~60fps）清空+重建导致 DOM 抖动与性能浪费
   const shopIcons = document.getElementById('shop-icons');
+  const hasShopIcons = !!shopIcons;
   const rebuild = !!shopIcons && this._shopDirty;
+  console.log("[SHOP_DEBUG] rebuild =", rebuild, "shopIcons=", !!shopIcons, "_shopDirty=", this._shopDirty, "_shopDirty type=", typeof this._shopDirty);
   if (rebuild) {
+    console.log("[SHOP_DEBUG] REBUILD triggered, clearing shopIcons");
     shopIcons.innerHTML = '';
     // 对齐 canvas：叠层原点 = canvas 左上角（canvas 前面有 HUD bar，不能从容器原点算）
     const rect = this.canvas.getBoundingClientRect();
@@ -353,6 +372,46 @@ UI._drawShopOverlay = function() {
       wrap.appendChild(badge);
     }
     if (shopIcons) shopIcons.appendChild(wrap);
+  };
+  // G块专用：全帧渲染背包网格物品，不依赖rebuild
+  const createItemBG = (key, tx, ty, ts, count) => {
+    if (!key || !ASSETS.registry || !ASSETS.registry[key]) return;
+    const c = toC(tx, ty);
+    const size = ts * S;
+    const pre = (typeof ASSETS.get === 'function') ? ASSETS.get(key) : null;
+    let w = size, h = size;
+    if (pre && pre.naturalWidth && pre.naturalHeight) {
+      const ar = pre.naturalWidth / pre.naturalHeight;
+      if (Math.abs(ar - 1) > 0.06) { w = size * ar; h = size; }
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'shop-item is-draggable';
+    wrap.setAttribute('data-slot-row', 'backpack');
+    wrap.setAttribute('draggable', 'true');
+    wrap.addEventListener('dragstart', (e) => {
+      this._dragKey = key;
+      this._dragCount = (typeof count === 'number' && count > 0) ? count : 1;
+      if (e.dataTransfer) {
+        e.dataTransfer.setData('text/plain', key);
+        e.dataTransfer.effectAllowed = 'copy';
+      }
+    });
+    wrap.addEventListener('dragend', () => { this._dragKey = null; });
+    this._centerEl(wrap, c.x, c.y, w, h);
+    wrap.style.width = Math.round(w) + 'px';
+    wrap.style.height = Math.round(h) + 'px';
+    const img = document.createElement('img');
+    img.src = ASSETS.registry[key];
+    img.alt = key;
+    wrap.appendChild(img);
+    if (count != null && count !== '' && count !== 1) {
+      const badge = document.createElement('span');
+      badge.className = 'shop-count';
+      const num = (typeof count === 'number' && count > 9999) ? Math.round(count / 1000) + 'k' : count;
+      badge.textContent = num;
+      wrap.appendChild(badge);
+    }
+    shopIcons && shopIcons.appendChild(wrap);
   };
   const txt = (str, tx, ty, size, color, align) => {
     const c = toC(tx, ty);
@@ -573,6 +632,7 @@ UI._drawShopOverlay = function() {
   // 例：金币 500 → 8 格（7×64 + 52）。金币此前只放图标无数量，现按余额堆叠并带数量角标。
   // 已被拖入输入框、需从背包「扣除」的物品（拖拽=移动而非复制）：
   // 背包按真实总数渲染时减去这份，使其从背包消失、只显示在输入框里。
+  // 【全帧渲染】：与H块一致，每帧都重建背包DOM，确保补位后的种子能即时显示。
   const reservedKey = this._shopReservedKey;
   const reserved = (reservedKey && this._shopDroppedId && this._shopDroppedCount > 0)
     ? this._shopDroppedCount : 0;
@@ -584,7 +644,7 @@ UI._drawShopOverlay = function() {
     if (key === reservedKey) total -= reserved; // 扣掉已拖入输入框的那一份（作物单材料）
     if (toolReserved.includes(key) && toolParts[key]) total -= toolParts[key]; // 工具多材料预留
     total = Math.max(0, total);
-    for (const inSlot of this._stackChunks(total)) {
+    for (const inSlot of UI._stackChunks(total)) {
       items.push({ key, count: inSlot });
     }
   };
@@ -592,29 +652,38 @@ UI._drawShopOverlay = function() {
   Object.entries(toolParts).forEach(([key, count]) => {
     if (count > 0) pushStacks(key, count);
   });
-  // 金锭不进商店背包，只显示在快捷栏
-  DATA.SHOP_ITEMS.forEach(item => {
-    const c = Player.seeds[item.id] || 0;
-    if (c > 0) pushStacks(this._seedIconKey(item.id), c);
-  });
+  // 金锭不进商店背包，只显示在快捷栏。
+  // 种子不进G块，只显示在快捷栏（H块）。
+  // for (const item of DATA.SHOP_ITEMS) {
+  //   const c = Player.seeds[item.id] || 0;
+  //   if (c > 0) pushStacks(UI._seedIconKey(item.id), c);
+  // }
   for (const [cropId, count] of Object.entries(Player.inventory)) {
     if (count > 0) {
       const def = DATA.CROPS[cropId];
       if (def) pushStacks(def.assetHarvest, count);
     }
   }
-  // 重建完成，复位脏标记
+  // 重建背包DOM
   for (let i = 0; i < 36 && i < items.length; i++) {
     const c = i % 9, r = Math.floor(i / 9);
-    createItem(items[i].key, 115 + 18 * c, 91 + 18 * r, 13, items[i].count);
+    createItemBG(items[i].key, 115 + 18 * c, 91 + 18 * r, 13, items[i].count);
   }
-  // ===== H 底部快捷栏：显示主页面快捷栏物品（锄头、水桶等） =====
-  if (!Player.invSlots) Player._rebuildInvSlots();
-  const toolKeyMap = { hoe: 'wooden_hoe', water: 'water_bucket', axe: 'wooden_axe', acorn: 'acorn' };
+  // ===== H 底部快捷栏：显示主页面快捷栏物品（锄头、水桶等），并作为拖入商店的拖拽源 =====
+  const toolKeyMap = { hoe: 'wooden_hoe', water: 'water_bucket', axe: 'wooden_axe' };
   const seedIconMap = { wheat: 'wheat_seeds', potato: 'potato', strawberry: 'mc_sweet_berries', acorn: 'acorn' };
+  const hbRow = 4; // 第5行（快捷栏）
+
   for (let i = 0; i < 9; i++) {
-    const slot = Player.invSlots[27 + i];
+    const slot = Player.invSlots ? Player.invSlots[27 + i] : null;
     if (!slot) continue;
+    // 金锭正被拖入输入框（买种子 / 工具交易）时：商店快捷栏里不再画这一格，
+    // 视觉上"金锭离开快捷栏、进入输入框"，避免栏内与输入框同时显示两份金锭。
+    // 注意：这只是渲染层跳过，绝不改 _hotbarSlots / invSlots，所以金锭不会凭空消失；
+    // 取消放置(_resetShopDropped) 或成交(spendMoney→_rebuildInvSlots) 后此格会正常回来。
+    const moneyReserved = this._shopReservedKey === 'money' ||
+      (this._toolReserved && this._toolReserved.indexOf('money') >= 0);
+    if (slot.kind === 'resource' && slot.id === 'money' && moneyReserved) continue;
     let key = '';
     let count = 1;
     if (slot.kind === 'tool') {
@@ -627,12 +696,69 @@ UI._drawShopOverlay = function() {
       key = slot.key || slot.id;
       count = slot.count || 1;
     }
-    if (key) {
-      const row = 4; // 第5行（快捷栏）
-      const col = i;
-      createItem(key, 115 + 18 * col, 91 + 18 * row - 10, 13, count);
+    console.log("[SHOP_DEBUG] H块渲染slot", i, "key=", key, "count=", count);
+    if (!key) continue;
+    const tx = 115 + 18 * i;
+    const ty = 91 + 18 * hbRow - 10;
+    const c = toC(tx, ty);
+    const size = 13 * S;
+    const pre = (typeof ASSETS.get === 'function') ? ASSETS.get(key) : null;
+    let w = size, h = size;
+    if (pre && pre.naturalWidth && pre.naturalHeight) {
+      const ar = pre.naturalWidth / pre.naturalHeight;
+      if (Math.abs(ar - 1) > 0.06) { w = size * ar; h = size; }
     }
+    // 查找本格的旧 DOM（按 data-slot-index 匹配），若 key 或 count 变了则删除旧 DOM 以便重建
+    if (hasShopIcons) {
+      const oldEl = shopIcons.querySelector('[data-slot-index="' + i + '"]');
+      if (oldEl) {
+        const oldKey = oldEl.getAttribute('data-slot-key');
+        const oldCount = oldEl.getAttribute('data-slot-count');
+        if (oldKey === key && oldCount === String(count)) continue; // 无需变更
+        oldEl.remove(); // 已变更：删除旧 DOM，下一行重建
+      }
+    }
+    // 创建新的快捷栏格 DOM：纯拖拽源，发布 key/count 但不改权威数据
+    const wrap = document.createElement('div');
+    wrap.className = 'shop-item is-draggable shotbar-item-enter';
+    wrap.setAttribute('draggable', 'true');
+    wrap.setAttribute('data-slot-index', i);
+    wrap.setAttribute('data-slot-key', key);
+    wrap.setAttribute('data-slot-count', String(count));
+    // 纯拖拽源：只发布被拖物品的 key/count，绝不改 _hotbarSlots / invSlots。
+    // 金锭始终留在权威数据里，拖起时栏内仍显示（拖影正常），成交后由 _rebuildInvSlots 刷新 count。
+    wrap.addEventListener('dragstart', (e) => {
+      UI._dragKey = key;
+      UI._dragCount = count || 1;
+      Player._reservedHotbarIdx = i;
+      if (e.dataTransfer) {
+        e.dataTransfer.setData('text/plain', key);
+        e.dataTransfer.effectAllowed = 'move';
+      }
+    });
+    wrap.addEventListener('dragend', () => {
+      UI._dragKey = null;
+      UI._dragCount = 0;
+      Player._reservedHotbarIdx = null;
+    });
+    this._centerEl(wrap, c.x, c.y, w, h);
+    wrap.style.width = Math.round(w) + 'px';
+    wrap.style.height = Math.round(h) + 'px';
+    const img = document.createElement('img');
+    img.src = (typeof ASSETS !== 'undefined' && ASSETS.registry && ASSETS.registry[key]) ? ASSETS.registry[key] : '';
+    img.alt = key;
+    wrap.appendChild(img);
+    if (count != null && count !== '' && count !== 1) {
+      const badge = document.createElement('span');
+      badge.className = 'shop-count';
+      badge.textContent = (typeof count === 'number' && count > 9999) ? Math.round(count / 1000) + 'k' : count;
+      wrap.appendChild(badge);
+    }
+    shopIcons && shopIcons.appendChild(wrap);
+    // 下一帧再切换为 visible，使 CSS transition 生效（scale 0→1 动画）
+    requestAnimationFrame(() => wrap.classList.replace('shotbar-item-enter', 'shotbar-item-visible'));
   }
+  // H块渲染完成后重置脏标记，避免每帧重建DOM导致快捷栏闪烁
   if (rebuild) this._shopDirty = false;
 };
 
@@ -847,4 +973,6 @@ UI._onShopMove = function(e) {
   }
   if (hover !== this._shopHover) { this._shopHover = hover; this.render(); }
 };
+
+
 

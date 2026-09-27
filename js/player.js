@@ -62,7 +62,7 @@ const Player = {
     this.wood = 0;
     this.planks = 0; // 开局无木板（需砍树得原木后分解）
     this.acorns = 0; // 开局无橡果（需砍树获得）
-    this.ownedTools = { axe: false }; // 木斧头开局不拥有，需商店购买
+    this.ownedTools = { hoe: true, water: true, axe: false }; // 开局给锄头+水桶；斧头需商店购买
     this.inventory = {};
     this.seeds = {}; // 开局不送种子（仅锄头+水桶；种子由教程 tut1 奖励发放）
     this._allOrder = [];
@@ -76,6 +76,8 @@ const Player = {
     this._hotbarSlots = null;    // 长度 9：快捷栏持久布局（跨重开保留用户摆放），每格 null 或身份描述
     this._hotbarSel = 0;         // 当前选中的快捷栏格 0..8
     this._selectedInvSlot = -1;  // 主背包中选中的格（-1表示无选中）
+    this._reservedHotbarIdx = null; // 商店拖拽时保留的快捷栏槽位（防止重建时回填）
+    this._pendingSeedBackfillSlot = null; // 等待种子补位的金锭槽位索引
 
     if (typeof Quest !== 'undefined') Quest.reset(); // 任务书：开局清进度
   },
@@ -117,7 +119,28 @@ const Player = {
   /** 将新种子自动放入快捷栏第一个空位（不覆盖已有项） */
   _ensureSeedInHotbar(seedId) {
     if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
-    if (this._hbHasSeed(seedId)) return;
+    if (this._hbHasSeed(seedId)) {
+      console.log(`[_ensureSeedInHotbar] 种子 ${seedId} 已在快捷栏，跳过`);
+      return;
+    }
+    // 优先填入待补位的槽位（如金锭被拖走后等待种子顶替的槽）
+    console.log(`[_ensureSeedInHotbar] 检查pending=${this._pendingSeedBackfillSlot}, slots=`, JSON.stringify(this._hotbarSlots));
+    if (this._pendingSeedBackfillSlot !== null && !this._hotbarSlots[this._pendingSeedBackfillSlot]) {
+      console.log(`[_ensureSeedInHotbar] 种子 ${seedId} 填入待补位槽 slot${this._pendingSeedBackfillSlot}`);
+      this._hotbarSlots[this._pendingSeedBackfillSlot] = { kind: 'seed', seedId };
+      this._pendingSeedBackfillSlot = null;
+      return;
+    }
+    // 优先替换金锭槽：新买的种子应该占用金锭所在的槽位，而不是跳到后面的空位
+    const moneySlotIdx = this._hotbarSlots.findIndex(s => s && s.kind === 'resource' && s.id === 'money');
+    if (moneySlotIdx >= 0) {
+      console.log(`[_ensureSeedInHotbar] 种子 ${seedId} 替换金锭槽 slot${moneySlotIdx}`);
+      this._hotbarSlots[moneySlotIdx] = { kind: 'seed', seedId };
+      // 记录金锭被替换的位置，这样即使之后金锭槽被清除，种子也不会"回去"
+      this._pendingSeedBackfillSlot = moneySlotIdx;
+      return;
+    }
+    // 兜底：找第一个空槽
     for (let i = 0; i < 9; i++) {
       if (!this._hotbarSlots[i]) {
         this._hotbarSlots[i] = { kind: 'seed', seedId };
@@ -172,6 +195,24 @@ const Player = {
     return null;
   },
 
+  /** 去重：快捷栏最多只保留一个金锭（历史存档/重复逻辑/拖拽可能写入多个，导致"两组金锭"） */
+  _dedupeHotbarMoney() {
+    if (!this._hotbarSlots) return;
+    // 只去重（保留一个金锭），不清除金锭（由 _rebuildInvSlots 统一处理，以便触发种子补位）
+    let seen = false;
+    for (let k = 0; k < this._hotbarSlots.length; k++) {
+      const s = this._hotbarSlots[k];
+      if (s && s.kind === 'resource' && s.id === 'money') {
+        if (seen) {
+          this._hotbarSlots[k] = null;
+          if (this.invSlots) this.invSlots[27 + k] = null;
+        } else {
+          seen = true;
+        }
+      }
+    }
+  },
+
   /** 从聚合重建 36 格背包布局（开背包时调用一次；快捷栏用持久化的 _hotbarSlots，主栏用聚合） */
   _rebuildInvSlots() {
     if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
@@ -222,15 +263,88 @@ const Player = {
         else if (entry.id === 'money') continue;
       }
     }
-    // 更新快捷栏金锭——若已有金锭则直接更新数量，否则放入第一个空位
+    // 去重：快捷栏最多只保留一个金锭（历史存档/重复逻辑可能写入多个，导致"两组金锭"）
+    this._dedupeHotbarMoney();
+    // 金锭：money>0 时保留/更新金锭槽；money 用尽一律移除，杜绝 count=0 的「幽灵金锭」
     const existingMoneySlot = this._hotbarSlots.findIndex(s => s && s.kind === 'resource' && s.id === 'money');
-    if (existingMoneySlot >= 0) {
-      this._hotbarSlots[existingMoneySlot].count = this.money;
-    } else if (this.money > 0) {
-      const hbEmptyIdx = this._hotbarSlots.findIndex(s => !s);
-      if (hbEmptyIdx >= 0) {
-        this._hotbarSlots[hbEmptyIdx] = { kind: 'resource', id: 'money', key: 'money', label: '金锭', count: this.money };
+    if (this.money > 0) {
+      if (existingMoneySlot >= 0) {
+        // 金锭槽被拖走（_reservedHotbarIdx指向它）：即使还没花完钱也要清空，让种子立刻补位
+        if (existingMoneySlot === this._reservedHotbarIdx) {
+          console.log(`[_rebuildInvSlots] 金锭被拖走(${existingMoneySlot})，钱未花完也清空`);
+          console.log(`[_rebuildInvSlots] _allOrder=`, JSON.stringify(this._allOrder));
+          console.log(`[_rebuildInvSlots] seeds=`, JSON.stringify(this.seeds));
+          console.log(`[_rebuildInvSlots] _hotbarSlots前=`, JSON.stringify(this._hotbarSlots));
+          this._hotbarSlots[existingMoneySlot] = null;
+          // 设置等待种子补位的标志
+          this._pendingSeedBackfillSlot = existingMoneySlot;
+          // 立即补位：如果快捷栏已有该种子，将其移到刚清空的槽位（不论方向）
+          for (const entry of (this._allOrder || [])) {
+            if (entry.type !== 'seed') continue;
+            const sid = entry.id;
+            if ((this.seeds[sid] || 0) > 0) {
+              const seedIdx = this._hotbarSlots.findIndex(s => s && s.kind === 'seed' && s.seedId === sid);
+              console.log(`[_rebuildInvSlots] 检查种子 ${sid}: seedIdx=${seedIdx}, existingMoneySlot=${existingMoneySlot}`);
+              // 只要种子不在目标槽且目标槽为空，就移动过去（不论seedIdx是否大于targetSlot）
+              if (seedIdx !== existingMoneySlot && this._hotbarSlots[existingMoneySlot] === null) {
+                console.log(`[_rebuildInvSlots] 种子 ${sid} 从 slot${seedIdx} 移到 slot${existingMoneySlot}`);
+                this._hotbarSlots[existingMoneySlot] = this._hotbarSlots[seedIdx];
+                this._hotbarSlots[seedIdx] = null;
+                this._pendingSeedBackfillSlot = null;
+                break;
+              }
+            }
+          }
+          console.log(`[_rebuildInvSlots] _hotbarSlots后=`, JSON.stringify(this._hotbarSlots));
+        } else {
+          this._hotbarSlots[existingMoneySlot].count = this.money;
+        }
+      } else {
+        // 找第一个空槽，但跳过商店拖拽保留的槽位（成交瞬间该槽本就是金锭位，已被清空）
+        let hbEmptyIdx = -1;
+        for (let k = 0; k < this._hotbarSlots.length; k++) {
+          if (!this._hotbarSlots[k]) { hbEmptyIdx = k; break; }
+        }
+        // 如果 _reservedHotbarIdx 指向的槽已空（金锭被拖走），记录待补位槽位
+        // 这样种子可以补位到金锭被拖走的位置，而不是把金锭放回原位
+        console.log(`[_rebuildInvSlots] money分支: reservedHotbarIdx=${this._reservedHotbarIdx}, pending=${this._pendingSeedBackfillSlot}, slots=`, JSON.stringify(this._hotbarSlots));
+        if (this._reservedHotbarIdx !== null && this._hotbarSlots[this._reservedHotbarIdx] === null) {
+          console.log(`[_rebuildInvSlots] 检测到金锭被拖走! 设置pending=${this._reservedHotbarIdx}`);
+          this._pendingSeedBackfillSlot = this._reservedHotbarIdx;
+          hbEmptyIdx = -1; // 不回填金锭
+        } else if (hbEmptyIdx === this._reservedHotbarIdx) {
+          // 只有当 _reservedHotbarIdx 槽还有金锭时才跳过
+          for (let k = hbEmptyIdx + 1; k < this._hotbarSlots.length; k++) {
+            if (!this._hotbarSlots[k]) { hbEmptyIdx = k; break; }
+          }
+        }
+        // 如果有待补位的槽位（等待种子填入），不填充金锭
+        // 当种子已替换金锭槽时，_pendingSeedBackfillSlot 仍为原金锭槽位
+        if (hbEmptyIdx >= 0 && this._pendingSeedBackfillSlot !== hbEmptyIdx) {
+          this._hotbarSlots[hbEmptyIdx] = { kind: 'resource', id: 'money', key: 'money', label: '金锭', count: this.money };
+        }
+        // 额外检查：如果 _pendingSeedBackfillSlot 对应的槽已被种子替换，也不回填金锭
+        if (this._pendingSeedBackfillSlot >= 0 && this._hotbarSlots[this._pendingSeedBackfillSlot] && 
+            this._hotbarSlots[this._pendingSeedBackfillSlot].kind === 'seed') {
+          console.log(`[_rebuildInvSlots] 金锭槽已被种子替换，不回填`);
+          hbEmptyIdx = -1;
+        }
       }
+    } else if (existingMoneySlot >= 0 && existingMoneySlot !== this._reservedHotbarIdx) {
+      // money 用尽：清掉快捷栏里残留的金锭槽，避免显示 count=0 的幽灵金锭
+      // 注意：跳过 _reservedHotbarIdx，该槽位在拖拽期间被暂时保留
+      console.log(`[_rebuildInvSlots] 清空金锭槽 ${existingMoneySlot}, reservedHotbarIdx=${this._reservedHotbarIdx}`);
+      console.log(`[_rebuildInvSlots] _pendingSeedBackfillSlot=${this._pendingSeedBackfillSlot}, slots前=${JSON.stringify(this._hotbarSlots)}`);
+      this._hotbarSlots[existingMoneySlot] = null;
+      // 金锭被花光，触发补位
+      this._backfillSeedAfterMoneyRemoved(existingMoneySlot);
+      console.log(`[_rebuildInvSlots] slots后=${JSON.stringify(this._hotbarSlots)}`);
+    } else if (this.money <= 0 && this._pendingSeedBackfillSlot !== null) {
+      // 特殊情况：金锭槽已被清除（_purgeOrder 已删条目），但还有待补位的种子
+      console.log(`[_rebuildInvSlots] money=0 且有 pending=${this._pendingSeedBackfillSlot}，触发补位`);
+      console.log(`[_rebuildInvSlots] slots前=${JSON.stringify(this._hotbarSlots)}`);
+      this._backfillSeedAfterMoneyRemoved(this._pendingSeedBackfillSlot);
+      console.log(`[_rebuildInvSlots] slots后=${JSON.stringify(this._hotbarSlots)}`);
     }
     // 工具：只有拥有时才放入快捷栏（开局时 ownedTools 为空，由 _grantItem 添加工具后触发重建）
     for (const t of ['hoe', 'water']) {
@@ -256,11 +370,78 @@ const Player = {
     if (this.acorns > 0 && !this._hbHasTool('acorn')) {
       main.push({ kind: 'tool', toolId: 'acorn', key: toolMap['acorn'].key, label: toolMap['acorn'].label, count: this.acorns });
     }
+    // 补位前置：清掉「数量为 0 / 已删除」的种子占位残留。useSeed 种光某种子时只删了
+    // this.seeds 的计数，但 _hotbarSlots 里那份 {kind:'seed'} 描述符没清，导致该格显示 0 的残影、
+    // 且槽位不算空 → 其它种子无法补位（用户说的"没补位"）。清掉后腾出空槽给补位。
+    // 注意：种子数量始终在 this.seeds[cropId]，清掉占位不会丢种子。
+    for (let k = 0; k < this._hotbarSlots.length; k++) {
+      const s = this._hotbarSlots[k];
+      if (s && s.kind === 'seed' && !(this.seeds[s.seedId] > 0)) this._hotbarSlots[k] = null;
+    }
+    // 补位：把「有数量、但还没放进快捷栏」的种子，依次填入空着的快捷栏槽位。
+    // 例如金锭花光/拖走后空出的格子（或上面清掉的残影格），应由种子顶上，避免留空槽。
+    // 与"种子优先快捷栏"一致；已进快捷栏的种子靠 _hbHasSeed 跳过，不会双显。
+    // 注意：如果 _reservedHotbarIdx 对应的槽位已被清空（如金锭被拖走），种子应能填入
+    for (const entry of (this._allOrder || [])) {
+      if (entry.type !== 'seed') continue;
+      const sid = entry.id;
+      // 情况A：种子还没在快捷栏，正常填入
+      if ((this.seeds[sid] || 0) > 0 && !this._hbHasSeed(sid)) {
+        let k = this._hotbarSlots.findIndex(s => !s);
+        // 跳过拖拽保留的槽位，但如果该槽已被清空（null），则允许填入
+        while (k >= 0 && k === this._reservedHotbarIdx && this._hotbarSlots[k] !== null) {
+          k = this._hotbarSlots.findIndex((s, idx) => !s && idx !== this._reservedHotbarIdx, k + 1);
+        }
+        if (k < 0) break; // 快捷栏已满，剩余种子留主背包
+        this._hotbarSlots[k] = { kind: 'seed', seedId: sid };
+        // 刚填完等待补位的槽位，清除标志
+        if (k === this._pendingSeedBackfillSlot) {
+          this._pendingSeedBackfillSlot = null;
+        }
+      }
+      // 情况B：种子已在快捷栏，但有待补位的空槽（如金锭被拖走），移动到空槽
+      else if ((this.seeds[sid] || 0) > 0 && this._hbHasSeed(sid) && this._pendingSeedBackfillSlot !== null) {
+        const seedIdx = this._hotbarSlots.findIndex(s => s && s.kind === 'seed' && s.seedId === sid);
+        const targetSlot = this._pendingSeedBackfillSlot;
+        // 只要种子不在待补位的槽位，且该槽位为空，就移动过去（不论seedIdx是否大于targetSlot）
+        if (seedIdx !== targetSlot && this._hotbarSlots[targetSlot] === null) {
+          console.log(`[_rebuildInvSlots] 种子 ${sid} 从 slot${seedIdx} 移到 slot${targetSlot}`);
+          this._hotbarSlots[targetSlot] = this._hotbarSlots[seedIdx];
+          this._hotbarSlots[seedIdx] = null;
+          this._pendingSeedBackfillSlot = null;
+          break;
+        }
+      }
+    }
     // 快捷栏：按持久布局还原（现在 _hotbarSlots 已更新）
     for (let i = 0; i < 9; i++) inv[27 + i] = this._slotFromIdentity(this._hotbarSlots[i]);
     // 主栏填入背包
     for (let k = 0; k < main.length && k < 27; k++) inv[k] = main[k];
     this.invSlots = inv;
+  },
+
+  /** 金锭槽被清空后，优先把第一个未进快捷栏的种子填入该位置，或将已有种子移过来 */
+  _backfillSeedAfterMoneyRemoved(moneySlotIndex) {
+    console.log(`[_backfillSeedAfterMoneyRemoved] moneySlotIndex=${moneySlotIndex}, slots前=${JSON.stringify(this._hotbarSlots)}`);
+    for (const entry of (this._allOrder || [])) {
+      if (entry.type !== 'seed') continue;
+      const sid = entry.id;
+      if (this._hbHasSeed(sid)) {
+        const seedIdx = this._hotbarSlots.findIndex(s => s && s.kind === 'seed' && s.seedId === sid);
+        // 只要种子不在目标槽，且目标槽为空，就移动过去（不论方向）
+        if (seedIdx !== moneySlotIndex && this._hotbarSlots[moneySlotIndex] === null) {
+          console.log(`[_rebuildInvSlots] 种子 ${sid} 从 slot${seedIdx} 移到 slot${moneySlotIndex}`);
+          this._hotbarSlots[moneySlotIndex] = this._hotbarSlots[seedIdx];
+          this._hotbarSlots[seedIdx] = null;
+          break;
+        }
+      } else if ((this.seeds[sid] || 0) > 0) {
+        console.log(`[_rebuildInvSlots] 种子 ${sid} 填入 slot${moneySlotIndex}`);
+        this._hotbarSlots[moneySlotIndex] = { kind: 'seed', seedId: sid };
+        break;
+      }
+    }
+    console.log(`[_backfillSeedAfterMoneyRemoved] slots后=${JSON.stringify(this._hotbarSlots)}`);
   },
 
   // ─────────────────────────────────────────────
@@ -303,16 +484,29 @@ const Player = {
     }
     // 重新构建背包缓存，使金锭立即显示
     this._rebuildInvSlots();
+    // 立即刷新底部快捷栏显示（金锭数量变化需要实时可见）
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._renderBottomHotbar) {
+      globalThis.UI._renderBottomHotbar();
+    }
   },
 
   /** 扣钱 */
   spendMoney(amount) {
     if (this.money < amount) return false;
     this.money -= amount;
+    console.log('[spendMoney] 开始: money=', this.money, 'amount=', amount, 'reservedHotbarIdx=', this._reservedHotbarIdx, 'hotbarSlots=', JSON.stringify(this._hotbarSlots));
+    // 注意：不清除 _reservedHotbarIdx，由 shop.js 在交易完成后统一清除
+    // 如果这里清除，_rebuildInvSlots 执行时看不到保留标志，补位会跳到后面槽位
     if (this.money <= 0) this._purgeOrder('resource', 'money');
+    console.log('[spendMoney] 调用_rebuildInvSlots前: money=', this.money, 'reservedHotbarIdx=', this._reservedHotbarIdx);
     this._rebuildInvSlots();
+    console.log('[spendMoney] _rebuildInvSlots后: hotbarSlots=', JSON.stringify(this._hotbarSlots));
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen) {
       globalThis.UI.renderInventory();
+    }
+    // 立即刷新底部快捷栏显示（金锭槽清空/种子补位都需要实时可见）
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._renderBottomHotbar) {
+      globalThis.UI._renderBottomHotbar();
     }
     return true;
   },
@@ -376,6 +570,11 @@ const Player = {
     if (!this._allOrder.some(e => e.type === 'crop' && e.id === cropId)) {
       this._allOrder.push({ type: 'crop', id: cropId });
     }
+    // 重新构建背包缓存并刷新显示
+    this._rebuildInvSlots();
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._renderBottomHotbar) {
+      globalThis.UI._renderBottomHotbar();
+    }
   },
 
   /** 收获物清空 */
@@ -425,9 +624,22 @@ const Player = {
   // ─────────────────────────────────────────────
   /** 种子操作（按首次获得顺序追踪） */
   addSeeds(cropId, count) {
+    // 注意：不清除 _reservedHotbarIdx，因为 spendMoney() → _rebuildInvSlots() 需要它来检测金锭被拖走
+    // 清除时机由 shop.js 在 _executeTrade 末尾统一处理
+    console.log(`[addSeeds] 开始: cropId=${cropId}, money=${this.money}, reservedHotbarIdx=${this._reservedHotbarIdx}, pending=${this._pendingSeedBackfillSlot}, seeds=${JSON.stringify(this.seeds)}, hotbar=`, JSON.stringify(this._hotbarSlots));
     this.seeds[cropId] = (this.seeds[cropId] || 0) + count;
     if (!this._allOrder.some(e => e.type === 'seed' && e.id === cropId)) {
       this._allOrder.push({ type: 'seed', id: cropId });
+    }
+    // 买种子优先填快捷栏空位（方便直接拿去种）；快捷栏满才落主背包
+    this._ensureSeedInHotbar(cropId);
+    this._rebuildInvSlots();
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen) {
+      globalThis.UI.renderInventory();
+    }
+    // 买/获种子后快捷栏可能新增一格（优先填空位），立即刷新主界面底部快捷栏 DOM 让补位可见。
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._renderBottomHotbar) {
+      globalThis.UI._renderBottomHotbar();
     }
   },
 
@@ -446,6 +658,11 @@ const Player = {
     this._rebuildInvSlots();
     if (typeof globalThis.UI !== 'undefined' && globalThis.UI._inventoryOpen) {
       globalThis.UI.renderInventory();
+    }
+    // 种掉种子后快捷栏可能腾出空槽并被背包种子补位，立即刷新主界面底部快捷栏 DOM，
+    // 否则 DOM 陈旧、用户看不到补位（_updateHeldSlot 为空函数，不会自动刷新）。
+    if (typeof globalThis.UI !== 'undefined' && globalThis.UI._renderBottomHotbar) {
+      globalThis.UI._renderBottomHotbar();
     }
     return true;
   },

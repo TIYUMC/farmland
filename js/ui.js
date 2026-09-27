@@ -466,10 +466,11 @@ const UI = {
     this.canvas.addEventListener('wheel', (e) => { if (this._onShopWheel) this._onShopWheel(e); }, { passive: false });
 
     this.canvas.addEventListener('mousedown', (e) => { if (this._onShopBarDown) this._onShopBarDown(e); });
-
+    this.canvas.addEventListener('touchstart', (e) => { if (this._onShopBarDown) this._onShopBarDown(e); }, { passive: false });
     window.addEventListener('mousemove', (e) => { if (this._onShopBarMove) this._onShopBarMove(e); });
-
+    window.addEventListener('touchmove', (e) => { if (this._onShopBarMove) this._onShopBarMove(e); }, { passive: false });
     window.addEventListener('mouseup', () => { this._shopBarDrag = false; });
+    window.addEventListener('touchend', () => { this._shopBarDrag = false; });
 
 
 
@@ -4804,11 +4805,10 @@ const UI = {
   // ─────────────────────────────────────────────
 
   _eventToCanvas(e) {
-
     const rect = this.canvas.getBoundingClientRect();
-
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    return { x: clientX - rect.left, y: clientY - rect.top };
   },
 
 
