@@ -55,6 +55,8 @@ UI.closeShop = function() {
   this._shopDroppedCount = null;
   this._resetToolParts();
   this._shopDirty = false;
+  // 清除拖拽保留槽位，防止状态泄漏
+  Player._reservedHotbarIdx = null;
   const si = document.getElementById('shop-icons');
   if (si) si.innerHTML = '';
   Engine.resume();
@@ -264,7 +266,6 @@ UI._executeTrade = function(t) {
  *   G 下：背包 9×4 —— 按 64 堆叠，并扣除已拖入输入框的份额
  */
 UI._drawShopOverlay = function() {
-  console.log("[SHOP_DEBUG] _drawShopOverlay called, this._shopDirty =", this._shopDirty, "this === UI?", this === window.UI);
   const ctx = this.ctx;
   const W = this.canvas.width, H = this.canvas.height;
 
@@ -295,9 +296,7 @@ UI._drawShopOverlay = function() {
   const shopIcons = document.getElementById('shop-icons');
   const hasShopIcons = !!shopIcons;
   const rebuild = !!shopIcons && this._shopDirty;
-  console.log("[SHOP_DEBUG] rebuild =", rebuild, "shopIcons=", !!shopIcons, "_shopDirty=", this._shopDirty, "_shopDirty type=", typeof this._shopDirty);
   if (rebuild) {
-    console.log("[SHOP_DEBUG] REBUILD triggered, clearing shopIcons");
     shopIcons.innerHTML = '';
     // 对齐 canvas：叠层原点 = canvas 左上角（canvas 前面有 HUD bar，不能从容器原点算）
     const rect = this.canvas.getBoundingClientRect();
@@ -696,7 +695,6 @@ UI._drawShopOverlay = function() {
       key = slot.key || slot.id;
       count = slot.count || 1;
     }
-    console.log("[SHOP_DEBUG] H块渲染slot", i, "key=", key, "count=", count);
     if (!key) continue;
     const tx = 115 + 18 * i;
     const ty = 91 + 18 * hbRow - 10;

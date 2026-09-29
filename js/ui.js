@@ -532,7 +532,6 @@ const UI = {
 
     this._lastFrame = 0;
     this._isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-    this._renderTick = 0;  // 移动端隔帧计数器
 
     this._navHoverCur = 1;
 
@@ -851,19 +850,10 @@ const UI = {
 
     if (this._grassShakes && this._grassShakes.length) this._drawGrassShakes(ctx, dt);
 
-    // 动态层：未浇水作物的呼吸高亮 —— 移动端隔帧渲染以减少CPU占用
+    // 动态层：未浇水作物的呼吸高亮
     if (this.scene === 'farm') {
-      if (this._isMobile) {
-        if (!this._renderTick) this._renderTick = 0;
-        this._renderTick++;
-        if (this._renderTick % 2 === 0) {
-          this._drawWaterOverlay(ctx, cs);
-          this._drawFarmlandOverlay(ctx, cs);
-        }
-      } else {
-        this._drawWaterOverlay(ctx, cs);
-        this._drawFarmlandOverlay(ctx, cs);
-      }
+      this._drawWaterOverlay(ctx, cs);
+      this._drawFarmlandOverlay(ctx, cs);
     }
 
 
@@ -3556,15 +3546,13 @@ const UI = {
 
       if (cell.watered || isGrown) return; // 已浇水或成熟则无需提示
 
-      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 320);
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 800);
 
       // 整格淡蓝呼吸高亮
+      this._fillCell(ctx, x, y, cs, `rgba(90,180,250,${0.06 + 0.06 * pulse})`);
 
-      this._fillCell(ctx, x, y, cs, `rgba(90,180,250,${0.10 + 0.14 * pulse})`);
-
-      // 闪烁边框 + 右上角水桶角标
-
-      this._drawBreathingBorder(ctx, x, y, cs, `rgba(95,195,255,${0.45 + 0.45 * pulse})`, cs * 0.36, pulse, 'water_bucket', '💧');
+      // 呼吸边框 + 右上角水桶角标
+      this._drawBreathingBorder(ctx, x, y, cs, `rgba(95,195,255,${0.25 + 0.15 * pulse})`, cs * 0.36, pulse, 'water_bucket', '💧');
 
     });
 
@@ -3572,11 +3560,9 @@ const UI = {
 
 
 
-  /** 动态层：耕地的呼吸描边——"玩家翻过的田"边界签名，每帧呼吸闪烁（方案：A3 + 跟需浇水同款呼吸动画） */
-
   _drawFarmlandOverlay(ctx, cs) {
 
-    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 320);
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 800);
 
     this._forEachFarmCell(cs, (r, c, x, y) => {
 
@@ -3586,13 +3572,11 @@ const UI = {
 
       if (!cell || !cell.tilled || cell.crop) return;
 
-      // 空耕地描边改用绿色，随脉冲呼吸；线宽与基线对齐"需浇水"蓝边(lw3, 0.45+0.45*pulse)，仅色相区分
+      // 空耕地描边改用绿色，随脉冲呼吸（降低变化幅度，避免闪烁）
 
       const strokeRGB = cell.watered
-
-        ? `rgba(70,150,95,${0.30 + 0.35 * pulse})`    // 湿土：柔深绿（半透明质感）
-
-        : `rgba(125,190,135,${0.30 + 0.35 * pulse})`; // 干土：柔草绿（半透明质感，降饱和不刺眼）
+        ? `rgba(70,150,95,${0.15 + 0.15 * pulse})`    // 湿土：柔深绿
+        : `rgba(125,190,135,${0.15 + 0.15 * pulse})`; // 干土：柔草绿
 
       this._drawBreathingBorder(ctx, x, y, cs, strokeRGB, cs * 0.34, pulse, 'wheat_seeds', '🌾');
 
