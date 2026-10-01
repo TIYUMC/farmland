@@ -116,7 +116,7 @@ const _effectsMethods = {
 
       // 阻尼摆动：小幅左右摆，根部不动、顶部摆（绕格底中心旋转）——作用于「原草层」
 
-      const angle = Math.sin(s.age * 18) * s.amp * decay;
+      const angle = Math.sin(s.age * 18) * s.amp * decay;  // 草颤：绕格底中心左右摆动，自然晃动（大小随摆动视觉变化、顶部偏离格中心）
 
       const x = s.c * cs, y = s.r * cs;
 

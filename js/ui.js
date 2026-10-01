@@ -4576,7 +4576,7 @@ const UI = {
     let lastRenderTime = 0;
     // 检测是否为移动端
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-    const minFrameInterval = isMobile ? 50 : 16; // 移动端20fps降频，桌面60fps
+    const minFrameInterval = isMobile ? 33 : 16; // 移动端30fps降频（原20fps仍偏卡），桌面60fps
 
     const loop = () => {
 
@@ -4586,18 +4586,24 @@ const UI = {
         return;
       }
 
-      // 脏标记检测：仅在需要渲染时才执行完整渲染
-      const needsRender = this._needsRender || 
-                          (this._grassShakes && this._grassShakes.length > 0) ||
-                          (this._ripples && this._ripples.length > 0) || 
-                          this._transition;
-      
-      // 帧率限制
+      // 帧率限制：无论是否脏都按目标帧间隔节流（关键移动端优化——
+      // 旧逻辑仅在空闲时节流，导致草颤/水波/天气动画期间仍以满速 60fps 渲染，手机卡死）
       const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
-      if (!needsRender && now - lastRenderTime < minFrameInterval) {
+      if (now - lastRenderTime < minFrameInterval) {
         this._animRaf = requestAnimationFrame(loop);
         return;
       }
+
+      // 脏标记检测：本帧是否真的有内容需要更新
+      const needsRender = this._needsRender ||
+                          (this._grassShakes && this._grassShakes.length > 0) ||
+                          (this._ripples && this._ripples.length > 0) ||
+                          this._transition;
+      if (!needsRender) {
+        this._animRaf = requestAnimationFrame(loop);
+        return;
+      }
+
       lastRenderTime = now;
 
       const t0 = now;
