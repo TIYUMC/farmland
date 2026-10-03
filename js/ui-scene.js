@@ -335,20 +335,10 @@ const _sceneMethods = {
       // 画花朵：flowers 数组与 dirt/grass 同维；花朵格 = flowers[r][c] > 0（草=0，视觉替换草方块）
 
       // 数据驱动：flowers[r][c] 的值即花种编号(1..N)，贴图键查 DATA.FLOWERS（加花种不用改本处）
-
+      // 花格绘制统一走 _drawFlowerCell（含 flip 水平镜像，与静态/植被/描边三路径同朝向）
       const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
 
-      if (flower > 0) {
-
-        const fkey = this._flowerDef(flower).key;
-
-        // pad=0 让花朵占满整格（视觉上像地里长出来的，与草方块同占位）
-
-        this._drawPaddedAsset(ctx, fkey, x, y, cs, 0)
-
-          || this._fillCell(ctx, x, y, cs, '#a9b765');
-
-      }
+      if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
 
 
 
@@ -430,7 +420,7 @@ const _sceneMethods = {
 
     if (gstate !== 1 && gstate !== 2) return;
 
-    const C = DATA.FARM.COLS, i = r * C + c;
+    const C = DATA.FARM.COLS;
 
     // 雪埋草：雪覆盖率与草基部截断率正相关（比值 1），最多截断 1/4（100% 覆盖）。截断的是草叶基部（被雪盖住那段）。
 
@@ -466,6 +456,8 @@ const _sceneMethods = {
 
     const s = sway || 0;
 
+    const v = this._grassVariation(r, c);   // 每丛草固定大小/位置随机（自然感）
+
     ctx.save();
 
     if (trunc > 0) {                                              // 只画草叶顶部 (1-trunc)，基部被雪埋住
@@ -478,13 +470,36 @@ const _sceneMethods = {
 
     }
 
-    if (s) {
+    // 耕地格方向全裁：朝 4 邻耕地方向的溢出整条裁在本格边线（耕地格内草身 0 像素），
+    // 非耕地侧不裁（保留朝邻居草格的自然溢出）。必须与 _ensureGrassOutline 的 A 烘焙 clip 完全同步（双写，改一处必改另一处）。
+    const F2 = (this.scene === 'treeFarm') ? null : Farm;
+    if (F2 && F2.grid) {
+      const tR = !!(F2.grid[r] && F2.grid[r][c+1]);       // 右邻耕地
+      const tL = !!(F2.grid[r] && F2.grid[r][c-1]);       // 左邻耕地
+      const tB = !!(F2.grid[r+1] && F2.grid[r+1][c]);     // 下邻耕地
+      const tT = !!(F2.grid[r-1] && F2.grid[r-1][c]);     // 上邻耕地
+      if (tR || tL || tB || tT) {
+        ctx.beginPath();
+        const L = tL ? x : x - cs;          // 左邻耕地 → 像素不得越 x
+        const R = tR ? x + cs : x + cs * 2; // 右邻耕地 → 像素不得越 x+cs
+        const T = tT ? y : y - cs;
+        const Bm = tB ? y + cs : y + cs * 2;
+        ctx.rect(L, T, R - L, Bm - T);
+        ctx.clip();
+      }
+    }
+
+    if (s || v.scale !== 1 || v.ox || v.oy || v.flip) {
 
       const cx = x + cs / 2, cyBottom = y + cs;
 
-      ctx.translate(cx, cyBottom);
+      ctx.translate(cx + v.ox, cyBottom + v.oy);   // 位置偏移：不严格居中
 
-      ctx.rotate(s);
+      ctx.rotate(s);                                // 晃动（被踩/雨打时）
+
+      if (v.flip) ctx.scale(-1, 1);                 // 水平镜像：绕格垂直中线翻（草丛左右镜像；flip 与 scale/ox/oy 必须两路径逐字一致，改一处必改另一处）
+
+      ctx.scale(v.scale, v.scale);                  // 大小不一
 
       ctx.translate(-cx, -cyBottom);
 
@@ -492,20 +507,22 @@ const _sceneMethods = {
 
     if (gstate === 1) {
 
-      const sg = ASSETS.getTinted('short_grass', this._shade(colors.grass, 30));
+      const tint = this._shade(colors.grass, 30);
+      const layer = this._getGrassLayer(ASSETS.getTinted('short_grass', tint), 'grass|' + tint, cs);
 
-      if (sg) { ctx.globalAlpha = 1; this._drawImageCell(ctx, sg, x, y, cs); ctx.globalAlpha = 1; }
+      if (layer) {
+        ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 1;
+        // 草身与白环同规格（cs×cs，草形在 (1,1)）→ scale≠1 时缩放锚点逐像素一致，根治「有的贴合有的不贴合」
+        ctx.drawImage(layer, x, y);
+      }
 
     } else {
 
-      const dg = ASSETS.get('short_dry_grass');
+      const layer = this._getGrassLayer(ASSETS.get('short_dry_grass'), 'dry', cs);
 
-      if (dg) {
-
-        ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
-
-        this._drawImageCell(ctx, dg, x, y, cs); ctx.globalAlpha = 1;
-
+      if (layer) {
+        ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 1;
+        ctx.drawImage(layer, x, y);
       } else { this._fillCell(ctx, x, y, cs, this._dryGrassColor); }
 
     }
@@ -516,6 +533,434 @@ const _sceneMethods = {
 
 
 
+
+  /** 每丛草的确定性随机外观：大小 + 位置偏移（同一格跨帧/跨缓存稳定，不跳变）。仅作用于草顶绘制机制，不改草贴图内容。
+   *  scale 量化到 {1, 1.25}：1px 白环在 nearest 采样下「缩小(<1)会丢点→没画完」，「放大(≥1)逐点保留」。
+   *  整数化缩放（不缩小）根治描边断点；0.78~1.0 的刻意缩小去掉，只保留 1.0/1.25 两档大小变化。 */
+  /** 每丛草的确定性随机外观：大小 + 位置偏移 + 水平翻转（同一格跨帧/跨缓存/全量vs增量稳定，不跳变）。仅作用于草顶绘制机制，不改草贴图内容。
+   *  scale 量化到 {1, 1.25}：1px 白环在 nearest 采样下「缩小(<1)会丢点→没画完」，「放大(≥1)逐点保留」。
+   *  整数化缩放（不缩小）根治描边断点；0.78~1.0 的刻意缩小去掉，只保留 1.0/1.25 两档大小变化。
+   *  flip 判据 = fa（与 scale 同源）：fa<=0.5 不翻、fa>0.5 翻（与大小同位），同格跨路径永远同朝向，
+   *  杜绝「静态/植被/描边三处漂移」与描边错位。锁定与 scale 同源（如需与大小解耦改用第三路种子 c=Math.sin(r*311.7+c*127.1) 取 fc）。 */
+  _grassVariation(r, c) {
+    const a = Math.sin(r * 127.1 + c * 311.7) * 43758.5453;
+    const fa = a - Math.floor(a);                 // 0..1
+    const b = Math.sin(r * 269.5 + c * 183.3) * 24634.633;
+    const fb = b - Math.floor(b);                 // 0..1
+    const scale = (fa > 0.5) ? 1.25 : 1.0;        // 量化：不缩小，1px 线不丢点
+    const flip = fa > 0.5;                        // 与 scale 同源：大丛(1.25)镜像，同格三路径稳定
+    return {
+      scale,
+      ox: (fb - 0.5) * 0.34 * this.cellSize,      // ±17% 格宽，位置不居中
+      oy: (fa - 0.5) * 0.10 * this.cellSize,      // ±5% 轻微上下
+      flip
+    };
+  },
+
+  /** 树冠（树叶）大小：按格确定性随机 5 档（1.35/1.425/1.5/1.575/1.65 倍格宽），中间档 1.5 = 现状。
+
+   *  内部直接 Math.round 返回整数像素——精灵 size 与 drawImage 尺寸同源，杜绝 1px 错位。
+   *  种子用现成的按格确定性写法（与 _grassVariation 不同路，避免和草身大小/翻转耦合）。
+   *  严禁 Math.random()：增量重绘与全量重建对同一棵树必须算出同一尺寸，否则描边错位（同类坑）。 */
+  _treeCrownSize(r, c, cs) {
+    const t = Math.sin(r * 311.7 + c * 127.1);
+    const f = t - Math.floor(t);                  // 0..1
+    const k = Math.floor(f * 5);                  // 0..4
+    return Math.max(1, Math.round(cs * (1.35 + k * 0.075)));
+  },
+
+  /** 树苗（种下的橡果）大小：按格确定性随机 5 档，最高档 = 现状 cs-8（cs=48 → 40）。
+   *  cs=48 实测五档 = 32/34/36/38/40，全整数；只会出现更小或持平的橡果。
+   *  调用点自算 pad = Math.round((cs - size) / 2)（→ 8/7/6/5/4，最高档 pad=4 = 现状）。
+   *  第三路种子（401.3/211.9），与草(127.1/311.7)、树冠(311.7/127.1)都不同路。
+   *  严禁 Math.random()：增量重绘与全量重建对同一格必须同值，否则描边错位（同类坑）。 */
+  _treeSaplingSize(r, c, cs) {
+    const t = Math.sin(r * 401.3 + c * 211.9);
+    const f = t - Math.floor(t);                  // 0..1
+    const k = Math.floor(f * 5);                  // 0..4
+    return Math.max(1, Math.round(cs * (0.667 + (k / 4) * 0.1667)));
+  },
+
+  /** 树苗（种下的橡果）水平翻转：按格确定性随机，约 50% 格镜像。
+   *  第四路种子（379.7/523.1），与草(127.1/311.7)、位置fb(269.5/183.3)、
+   *  树冠(311.7/127.1)、树苗尺寸(401.3/211.9) 全部不同路 → 「某格橡果朝哪边」
+   *  与「某格橡果多大」不相关。
+   *  只在这定义一次：显示层 / 描边 A / 影子副本全用 this._treeSaplingFlip(...) 调
+   *  （运行时 ui-scene.js 后加载生效）。翻转是 canvas transform（绕格垂直中线水平镜像，
+   *  与花 _drawFlowerCell 同款），不是另存镜像图，_winterFrosted 两个朝向共用同一张 frost。
+   *  严禁 Math.random()：增量 vs 全量必须同值，否则描边错位（同类坑）。 */
+  _treeSaplingFlip(r, c) {
+    const t = Math.sin(r * 379.7 + c * 523.1);
+    const f = t - Math.floor(t);                  // 0..1
+    return f > 0.5;                               // 约 50% 格翻转
+  },
+
+  /** 花格绘制（v0.4.41）：复用 _grassVariation 逐格种子（含 flip），flip 格绕格垂直中线水平镜像。
+   *  8 处内联花段统一收口到本方法（ui-scene _renderStaticScene / ui-cache _renderCell·_renderVegCell·_buildVegCache
+   *  / ui.js 同名双写），保证静态/植被/描边三路径花身同朝向、不漂移。花 pad=0 占满整格；
+   *  花身缺失兜底 #a9b765（与静态层同色）；兜底色块翻转不可见，放翻转分支内/外等价，故逐字保留。 */
+  _drawFlowerCell(ctx, r, c, x, y, cs, flower) {
+    const fkey = this._flowerDef(flower).key;
+    const v = this._grassVariation(r, c);   // 花复用同一套逐格种子（含 flip）
+    if (v.flip) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      const fx = x + cs / 2;
+      ctx.translate(fx, 0); ctx.scale(-1, 1); ctx.translate(-fx, 0);   // 绕格垂直中线水平镜像
+      ASSETS.draw(ctx, fkey, x, y, cs, cs, false)
+        || (ctx.fillStyle = '#a9b765', ctx.fillRect(x, y, cs, cs));
+      ctx.restore();
+    } else {
+      ASSETS.draw(ctx, fkey, x, y, cs, cs, false)
+        || (ctx.fillStyle = '#a9b765', ctx.fillRect(x, y, cs, cs));
+    }
+  },
+
+  /** 预烘焙草身小图（(cs-2)×(cs-2)，最近邻，内缩 1px 与白环同网格）。
+   *  草身(_drawGrassTopLayer/_ensureGrassOutline) 共用同一张烘焙小图 → 采样网格逐像素一致，
+   *  根治「白环顶部对不齐」（原草身直接从 1024 源缩放、白环先烘焙再缩放，两条曲线错位）。
+   *  以 kind+'|'+cs 缓存。仅机制性增强，不改草贴图内容。 */
+  _getGrassBaked(src, kind, cs) {
+    if (!src) return null;
+    if (!this._grassBakedCache) this._grassBakedCache = {};
+    const key = kind + '|' + cs;
+    if (this._grassBakedCache[key]) return this._grassBakedCache[key];
+    const inset = 1;
+    const bw = cs - inset * 2;
+    const base = document.createElement('canvas');
+    base.width = bw; base.height = bw;
+    const b = base.getContext('2d');
+    b.imageSmoothingEnabled = false;
+    b.drawImage(src, 0, 0, src.width, src.height, 0, 0, bw, bw);
+    this._grassBakedCache[key] = base;
+    return base;
+  },
+
+  /** 草身显示层（cs×cs，草形定位在 (1,1)）。与白环 ring 同尺寸、同草形位置 →
+   *  缩放(scale≠1)时两图采样网格逐像素一致，根治「有的贴合有的不贴合」（原草身画 bw 小图、
+   *  白环画 cs 图，缩放采样错位 1px）。草身(_drawGrassTopLayer) 直接画本层到 (x,y)。 */
+  _getGrassLayer(src, kind, cs) {
+    if (!src) return null;
+    if (!this._grassLayerCache) this._grassLayerCache = {};
+    const key = kind + '|' + cs;
+    if (this._grassLayerCache[key]) return this._grassLayerCache[key];
+    const baked = this._getGrassBaked(src, kind, cs);   // bw×bw 草形
+    if (!baked) return null;
+    const layer = document.createElement('canvas');
+    layer.width = cs; layer.height = cs;
+    const lc = layer.getContext('2d');
+    lc.imageSmoothingEnabled = false;
+    lc.drawImage(baked, 1, 1);   // 草形在 (1,1)，与白环 ring 草形位置完全一致
+    this._grassLayerCache[key] = layer;
+    return layer;
+  },
+
+  /** 草白描边实时层（v0.4.28 机制改造）：由「逐格独立白环」改为「整片草合并外轮廓」。
+   *  旧版逐格独立描边在相邻草重叠处出现双白线交叉；现把全部草烘焙进离屏A，整幅 8 向 1px
+   *  外扩并集 + 擦中心 → 并集外白轮廓（离屏B），重叠区只剩外缘一圈，无内部交叉线。
+   *  两层渲染：
+   *  1) floor 层——合并外轮廓 B 整幅 20% 淡白（任何时刻都有淡边，远处不消失）；
+   *  2) 追光层——逐格从 B 裁 3cs×3cs 白环子图，按该格质心到鼠标（低通虚拟点）距离
+   *     独立 alpha 0.20→1.00（RADIUS=4×格宽，≈旧 240 值），近格亮远格淡，重叠区无双线交叉
+   *     （floor 层已画并集外缘，追光只在该格白环子图上加亮）。
+   *  A/B 按 key（场景+tint+cs+雪签名+农场数据标记+画布尺寸+年季日）缓存，key 不变零烘焙；
+   *  追光只画 alpha>0.205 的格（floor 之外的浪费直接跳过）；草颤期间轮廓不重建（短暂 1~2 帧错位）。
+   *  1px 硬边像素风，全最近邻。 */
+  _drawGrassOutline(ctx) {
+    if (this._transition) return;   // 滑场过渡不画（坐标错乱）；_busy 不挡：草身照常显示，白边不能跟着闪没
+    const out = this._ensureGrassOutline();
+    if (!out || !out.centroids.length) return;   // 无草 → 无描边
+    const cs = this.cellSize;
+    const RADIUS = cs * 4;   // ≈4 格宽（cs=62 时 248px，≈旧 240 值）：亮度按「各格质心到鼠标」逐格独立渐变
+    // 鼠标位置低通（根治快动闪烁）：alpha 跟随"缓慢逼近真实鼠标的虚拟点"，
+    // 快速掠过时追光渐变而非跳变；_mouseX=-1e4（mouseleave）时虚拟点滑向远处 → 回落 floor
+    if (this._olMouseX === undefined) { this._olMouseX = -1e4; this._olMouseY = -1e4; }
+    this._olMouseX += (this._mouseX - this._olMouseX) * 0.35;   // 系数 0.35 ≈ 5~6 帧收敛
+    this._olMouseY += (this._mouseY - this._olMouseY) * 0.35;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    // 第1层：合并外轮廓 floor（全图 20% 淡白）
+    ctx.globalAlpha = 0.20;
+    ctx.drawImage(out.canvas, 0, 0);
+    // 第2层：逐格追光（每丛草按各自质心到鼠标距离独立 alpha，近亮远淡）
+    for (let i = 0; i < out.centroids.length; i++) {
+      const p = out.centroids[i];
+      const dx = this._olMouseX - p.x, dy = this._olMouseY - p.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const a = 0.20 + 0.80 * Math.max(0, Math.min(1, 1 - d / RADIUS));
+      if (a <= 0.205) continue;   // alpha≈floor 的格跳过（避免逐格 drawImage 浪费）
+      const ring = this._getGrassRingCrop(p, cs, out);
+      if (!ring) continue;
+      const c = Math.floor(p.x / cs), r = Math.floor(p.y / cs);
+      ctx.globalAlpha = a;
+      ctx.drawImage(ring, (c - 1) * cs, (r - 1) * cs);   // 画回裁剪原点，与 B 逐像素对齐
+    }
+    ctx.restore();
+  },
+
+  /** 逐格追光用：从合并外轮廓 B 裁出该格 ±1 格范围的 3cs×3cs 白环子图（透明底，含 1px 外扩余量），
+   *  按 格坐标+cs+outlineKey 缓存。越界格（c=0/r=0）裁剪区含负坐标源，drawImage 越界源按规范视为透明，安全。 */
+  _getGrassRingCrop(p, cs, out) {
+    if (!this._grassRingCropCache) this._grassRingCropCache = {};
+    const c = Math.floor(p.x / cs), r = Math.floor(p.y / cs);
+    const key = r + ',' + c + '|' + cs + '|' + (this._grassOutlineKey || '');
+    if (this._grassRingCropCache[key]) return this._grassRingCropCache[key];
+    const S = cs * 3;
+    const cv = document.createElement('canvas');
+    cv.width = S; cv.height = S;
+    const o = cv.getContext('2d');
+    o.imageSmoothingEnabled = false;
+    o.drawImage(out.canvas, (c - 1) * cs, (r - 1) * cs, S, S, 0, 0, S, S);
+    this._grassRingCropCache[key] = cv;
+    return cv;
+  },
+
+  /** 缓存 key 变化时重建「整片草合并外轮廓」（离屏A/B + 质心表），key 不变零开销。
+   *  A：全画布画草身（筛选与 vegCache 完全一致：树格/非地面格跳过、裸土与 gstate∉{1,2} 跳过；
+   *  变换逐字复用 _drawGrassTopLayer：每丛 variation + 雪截断 clip 0.75cs + 草颤角度；r 升序保 z 序）；
+   *  B：A 整幅 8 向 1px 外扩并集 → destination-out 擦中心 → source-in 染白 → 并集外白轮廓
+   *  （重叠区不再有内部交叉线，只剩外缘一圈 1px 硬边）。 */
+  _ensureGrassOutline() {
+    const cs = this.cellSize;
+    const tint = this._shade(this._seasonColorAt().grass, 30);
+    let snowSig = '';
+    if (this._snowGround && this._snowGround.length) {
+      const parts = [];
+      for (const f of this._snowGround) parts.push(f.r + ',' + f.c);
+      parts.sort();
+      snowSig = parts.length + ':' + parts.join('|');
+    }
+    const key = [this.scene, tint, cs, snowSig, this._grassDataRev || 0,
+      this.canvas.width + 'x' + this.canvas.height,
+      Engine.year + '-' + Engine.season + '-' + Engine.day].join('#');
+    if (this._grassOutline && this._grassOutlineKey === key) return this._grassOutline;
+
+    // ---- 离屏A：烘焙全部草身 ----
+    const A = this._grassBodyCanvas || (this._grassBodyCanvas = document.createElement('canvas'));
+    if (A.width !== this.canvas.width || A.height !== this.canvas.height) {
+      A.width = this.canvas.width; A.height = this.canvas.height;
+    }
+    const a = A.getContext('2d');
+    a.clearRect(0, 0, A.width, A.height);
+    const layerG = ASSETS.getTinted('short_grass', tint) ? this._getGrassLayer(ASSETS.getTinted('short_grass', tint), 'grass|' + tint, cs) : null;
+    const layerD = this._getGrassLayer(ASSETS.get('short_dry_grass'), 'dry', cs);
+    if (!layerG && !layerD) {
+      // 草贴图未加载：花/树冠兜底用贴图/纯色，不依赖草层；
+      // 只有「既无草层、又无花、又无 grown 树冠、又无树苗」才早退空轮廓。
+      // 场景判断用 this.scene（const treeFarm 在下方 726 行才声明，块内直接引用会 TDZ）。
+      let anyFlower = false;
+      if (this.scene !== 'treeFarm' && Farm.flowers) {
+        for (let fr = 0; fr < DATA.FARM.ROWS && !anyFlower; fr++)
+          for (let fc = 0; fc < DATA.FARM.COLS; fc++)
+            if ((Farm.flowers[fr] || [])[fc]) { anyFlower = true; break; }
+      }
+      let anyCanopy = false;
+      if (this.scene === 'treeFarm' && TreeFarm.trees) {
+        for (let tr = 0; tr < DATA.FARM.ROWS && !anyCanopy; tr++)
+          for (let tc = 0; tc < DATA.FARM.COLS; tc++)
+            if (TreeFarm.trees[tr] && TreeFarm.trees[tr][tc] && TreeFarm.trees[tr][tc].stage === 'grown') { anyCanopy = true; break; }
+      }
+      // 树苗也算子「有轮廓源」：否则场上只有树苗（且无草、无 grown）会早退成空轮廓 → 树苗没边
+      let anySapling = false;
+      if (this.scene === 'treeFarm' && TreeFarm.trees) {
+        for (let tr = 0; tr < DATA.FARM.ROWS && !anySapling; tr++)
+          for (let tc = 0; tc < DATA.FARM.COLS; tc++)
+            if (TreeFarm.trees[tr] && TreeFarm.trees[tr][tc] && TreeFarm.trees[tr][tc].stage === 'sapling') { anySapling = true; break; }
+      }
+      if (!anyFlower && !anyCanopy && !anySapling) {
+        this._grassOutlineKey = key;
+        this._grassRingCropCache = {};
+        this._grassOutline = { canvas: A, centroids: [] };   // 贴图未加载 → 空轮廓
+        return this._grassOutline;
+      }
+      // 有花或树冠无草：草层为 null，下面 A 烘焙循环里草格因 layer null 跳过，花/树冠正常烘焙
+    }
+    const treeFarm = this.scene === 'treeFarm';
+    const centroids = [];
+    const snowSet = snowSig ? new Set(snowSig.split(':').pop().split('|').filter(Boolean)) : null;
+    const shakeAngle = {};
+    if (this._grassShakes && this._grassShakes.length) {
+      for (const s of this._grassShakes) {
+        const k = s.age / s.maxAge, decay = 1 - k;
+        shakeAngle[s.r + ',' + s.c] = Math.sin(s.age * 18) * s.amp * decay;
+      }
+    }
+    for (let r = 0; r < DATA.FARM.ROWS; r++) {
+      for (let c = 0; c < DATA.FARM.COLS; c++) {
+        let gstate, isBare, flower = 0;
+        if (treeFarm) {
+          const t = TreeFarm.trees[r] && TreeFarm.trees[r][c];
+          if (t) {
+            if (t.stage === 'sapling') {
+              // 树苗（种下的橡果）：只烘 alpha=1 的橡果本体，纳入草合并外描边。
+              // 参数逐字抄显示层 sapling 主画分支（_drawTreeEntity 1469-1498，pad/size 同式）。
+              // 不整调 _drawTreeEntity —— 它含 frost 段 globalAlpha<1 的半透明白；A 是轮廓源，
+              // B 用 destination-out 按 alpha 擦中心，半透明像素擦不干净 → 白边内部发虚/出双层
+              // （0.4.50 手抄树干参数是同个原因）。frost 一律不烘 → 冬天霜白后白边位置不跑。
+              const size = this._treeSaplingSize(r, c, cs);   // 与显示层同一口径（A 循环里 r/c 就是循环变量）
+              const pad = Math.round((cs - size) / 2);
+              const flip = this._treeSaplingFlip(r, c);      // 与显示层同一口径（A 循环里 r/c 就是循环变量）
+              a.save();
+              a.imageSmoothingEnabled = false;
+              a.globalAlpha = 1;
+              if (flip) {
+                const fx = c * cs + cs / 2;
+                a.translate(fx, 0); a.scale(-1, 1); a.translate(-fx, 0);   // 绕格垂直中线水平镜像
+              }
+              const ok = ASSETS.draw(a, 'acorn_grow', c * cs + pad, r * cs + pad, size, size);
+              if (!ok) {
+                // 贴图缺失兜底：位置与显示层 1479-1497 逐字一致（cx 处 x+cs/2 ≡ c*cs+cs/2）
+                const cx = c * cs + cs / 2;
+                const trunkW = Math.max(2, cs * 0.14), trunkH = cs * 0.34;
+                a.fillStyle = '#6b4a2b';
+                a.fillRect(cx - trunkW / 2, r * cs + cs - trunkH - 1, trunkW, trunkH);
+                a.fillStyle = this._seasonGrass(-22);
+                const ly = r * cs + cs * 0.16, lh = cs * 0.26;
+                a.fillRect(cx - cs * 0.22, ly + lh,       cs * 0.44, lh);
+                a.fillRect(cx - cs * 0.16, ly + lh * 0.5, cs * 0.32, lh);
+                a.fillRect(cx - cs * 0.10, ly,            cs * 0.20, lh);
+              }
+              a.restore();
+              centroids.push({ x: c * cs + cs / 2, y: r * cs + cs / 2 });   // 树苗纳入逐格追光，只 push 一次
+              continue;
+            }
+            if (t.stage !== 'grown') continue;      // 未知 stage 仍保持原兜底
+            // grown 树 → 烘树冠（与 _drawTreeEntity grown 段 1475+ 位置/尺寸逐字一致，防错位）；
+            // 树冠无 _grassVariation、天然不翻转，不加 flip/雪截断/耕地全裁。
+            const baseGrass = this._seasonColorAt().grass;
+            const leafColor = this._shade(baseGrass, -30);
+            const crownSize = this._treeCrownSize(r, c, cs);   // 与 _drawTreeEntity 同一口径（fr/fc 反推等价于 r/c）
+            const canopy = this._canopySprite(leafColor, Math.max(1, Math.round(crownSize)));
+            if (canopy) {
+              const crownX = c * cs + (cs - crownSize) / 2;
+              const trunkH = cs * 0.72;
+              // 先烘树干（与 _drawTreeEntity grown 段 1520-1530 逐字一致：trunkW/tx/ty 同式，trunkH 复用本块已声明）；
+              // 顺序先树干后树冠，与显示层 1530→1554 同序，并集形状与顺序无关，仅为对照不漂。
+              // 包 save/restore：_drawWoodOrFill 贴图缺失时写 a.fillStyle='#6b4a2b'，避免污染后续 drawImage。
+              const trunkW = cs * 0.52;
+              const tx = c * cs + (cs - trunkW) / 2;
+              const ty = r * cs + cs - trunkH - 2;
+              a.save();
+              this._drawWoodOrFill(a, 'oak_log', tx, ty, trunkW, trunkH);
+              a.restore();
+              const crownBottom = r * cs + cs - trunkH * 0.45;
+              const crownY = crownBottom - crownSize;
+              a.save();
+              a.imageSmoothingEnabled = false;
+              a.globalAlpha = 1;
+              a.drawImage(canopy, crownX, crownY, crownSize, crownSize);
+              a.restore();
+              centroids.push({ x: crownX + crownSize / 2, y: crownY + crownSize / 2 });   // 树冠纳入逐格追光
+            }
+            continue;   // 树格烘完树冠即走，不画草/花
+          }
+          gstate = (TreeFarm.grass && TreeFarm.grass[r]) ? (TreeFarm.grass[r][c] || 0) : 0;
+          isBare = !!(TreeFarm.bare && TreeFarm.bare[r] && TreeFarm.bare[r][c]);
+        } else {
+          if (Farm.grid[r] && Farm.grid[r][c]) continue;
+          gstate = (Farm.grass && Farm.grass[r]) ? (Farm.grass[r][c] || 0) : 0;
+          isBare = !!(Farm.bare && Farm.bare[r] && Farm.bare[r][c]);
+          flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
+        }
+        if (isBare || ((gstate !== 1 && gstate !== 2) && flower === 0)) continue;
+        const x = c * cs, y = r * cs;
+        const layer = (gstate === 1) ? layerG : layerD;
+        if (flower === 0 && !layer) continue;   // 草格需草层；花格不依赖草层（贴图/纯色兜底）
+        a.save();
+        // 雪截断 clip：草/花共用（雪埋基 0.25，与草身同截断）
+        const trunc = snowSet && snowSet.has(r + ',' + c) ? 0.25 : 0;
+        if (trunc > 0) { a.beginPath(); a.rect(x, y, cs, cs * (1 - trunc)); a.clip(); }
+        if (flower > 0) {
+          // 花格：pad=0 占满整格、无随机偏移（ox/oy/scale 不用，仅 flip 与 _drawFlowerCell 同源）；
+          // 花不溢出格边，草身「耕地方向全裁」clip 对花无意义，故花分支不加（已 continue 走不到草分支）。
+          const fv = this._grassVariation(r, c);   // 取 flip（与 _drawFlowerCell 同一套种子，逐字一致）
+          a.imageSmoothingEnabled = false;
+          a.globalAlpha = 1;
+          if (fv.flip) {
+            const fx = x + cs / 2;
+            a.translate(fx, 0); a.scale(-1, 1); a.translate(-fx, 0);   // 水平镜像：绕格垂直中线（与 _drawFlowerCell 翻转逐字一致）
+          }
+          const fkey = this._flowerDef(flower).key;
+          if (!ASSETS.draw(a, fkey, x, y, cs, cs, false)) {
+            a.fillStyle = '#a9b765';   // 与静态层花兜底同色
+            a.fillRect(x, y, cs, cs);
+          }
+          a.restore();
+          centroids.push({ x: x + cs / 2, y: y + cs / 2 });   // 花纳入逐格追光
+          continue;
+        }
+        // 草身「耕地方向全裁」clip：与 _drawGrassTopLayer 草身 clip 完全同步（双写，改一处必改另一处）。只对草有意义。
+        if (!treeFarm && Farm.grid) {
+          const tR = !!(Farm.grid[r] && Farm.grid[r][c+1]);
+          const tL = !!(Farm.grid[r] && Farm.grid[r][c-1]);
+          const tB = !!(Farm.grid[r+1] && Farm.grid[r+1][c]);
+          const tT = !!(Farm.grid[r-1] && Farm.grid[r-1][c]);
+          if (tR || tL || tB || tT) {
+            a.beginPath();
+            const L = tL ? x : x - cs;
+            const R = tR ? x + cs : x + cs * 2;
+            const T = tT ? y : y - cs;
+            const Bm = tB ? y + cs : y + cs * 2;
+            a.rect(L, T, R - L, Bm - T);
+            a.clip();
+          }
+        }
+        // 与草身完全同参数变换（_drawGrassTopLayer 逐字复用）：绕格底中心 偏移→旋转→翻转→缩放。
+        // flip 与 scale/ox/oy 必须两路径逐字一致，改一处必改另一处（显示层 ui-scene _drawGrassTopLayer 与本源）。
+        const v = this._grassVariation(r, c);
+        const s = shakeAngle[r + ',' + c] || 0;
+        if (s || v.scale !== 1 || v.ox || v.oy || v.flip) {
+          const cx = x + cs / 2, cyBottom = y + cs;
+          a.translate(cx + v.ox, cyBottom + v.oy);
+          a.rotate(s);
+          if (v.flip) a.scale(-1, 1);
+          a.scale(v.scale, v.scale);
+          a.translate(-cx, -cyBottom);
+        }
+        a.imageSmoothingEnabled = false;
+        a.globalAlpha = 1;
+        a.drawImage(layer, x, y);
+        a.restore();
+        centroids.push({ x: x + cs / 2, y: y + cs / 2 });
+      }
+    }
+
+    // ---- 离屏B：整幅 8 向 1px 外扩并集 → 擦中心 → 染白 → 合并外白轮廓（重叠区只剩外缘一圈） ----
+    const B = this._grassOutlineCanvas || (this._grassOutlineCanvas = document.createElement('canvas'));
+    if (B.width !== this.canvas.width || B.height !== this.canvas.height) {
+      B.width = this.canvas.width; B.height = this.canvas.height;
+    }
+    const o = B.getContext('2d');
+    o.clearRect(0, 0, B.width, B.height);
+    o.imageSmoothingEnabled = false;
+    const O = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+    for (let i = 0; i < 8; i++) o.drawImage(A, O[i][0], O[i][1]);
+    // B 段擦中心：destination-out 直接叠 A 按比例擦（out = B×(1-A/255)）。
+    // 0.4.54 曾在此插入「A 二值化到 A2 再擦」修旧贴图的亮核 halo 白环；0.4.55 换新 acorn_grow
+    // （halo 已去除）后二值化收益归零、且把草淡边缘当非实心砍掉（整屏草白 −8.5%、连通块 +159），
+    // 净负向 → 0.4.60 摘除，回到直接擦 A。
+    o.globalCompositeOperation = 'destination-out';
+    o.drawImage(A, 0, 0);
+    o.globalCompositeOperation = 'source-in';
+    o.fillStyle = '#ffffff';
+    o.fillRect(0, 0, B.width, B.height);
+    // 耕地格方向全裁：B 生成后擦除每个耕地格整格白像素（8 向外扩的 1px 环会伸进耕地格 1px，
+    // 必须全擦不留边线）→ 耕地格内部 + 1px 边线全 0 白像素。
+    o.globalCompositeOperation = 'destination-out';
+    if (!treeFarm && Farm.grid) {
+      for (let r = 0; r < DATA.FARM.ROWS; r++) {
+        for (let c = 0; c < DATA.FARM.COLS; c++) {
+          if (Farm.grid[r] && Farm.grid[r][c]) o.fillRect(c * cs, r * cs, cs, cs);
+        }
+      }
+    }
+    o.globalCompositeOperation = 'source-over';
+
+    this._grassOutlineKey = key;
+    this._grassRingCropCache = {};   // B 已重建：逐格裁剪子图全部失效
+    this._grassOutline = { canvas: B, centroids };
+    return this._grassOutline;
+  },
 
   _drawGrassGroundCell(ctx, r, c, x, y, cs, gstate, isBare, colors, swayAngle) {
 
@@ -1093,13 +1538,25 @@ const _sceneMethods = {
 
     if (t.stage === 'sapling') {
 
-      // 树苗：用 acorn 像素贴图绘制；素材缺失时回退简单像素方块，不出 emoji
+      // 树苗（种下去的橡果）：用 16×16 grow 贴图 acorn_grow；素材缺失时回退简单像素方块，不出 emoji
+      // 尺寸按格确定性随机（_treeSaplingSize），最高档 = 现状 cs-8；pad 自算，只可能更小或持平
 
-      const pad = 4, size = cs - pad * 2;
+      const size = this._treeSaplingSize(fr, fc, cs);          // _drawTreeEntity 无 r/c 形参，用已有 fr/fc 反推
+      const pad = Math.round((cs - size) / 2);
 
       const winter = this._isWinter();
+      const flip = this._treeSaplingFlip(fr, fc);              // 第四路种子，约 50% 格水平镜像
 
-      if (!ASSETS.draw(ctx, 'acorn', x + pad, y + pad, size, size)) {
+      // 翻转坐标系：绕格垂直中线水平镜像（与花 _drawFlowerCell:595 同款）。
+      // 包住 ASSETS.draw + 兜底 fillRect + frost 段，frost 也在翻转坐标系内（漏了会导致
+      // 冬天橡果本体镜像、霜白却正着 → 错位的白边）。frost 自带 save/restore 嵌套在内没问题。
+      if (flip) {
+        ctx.save();
+        const fx = x + cs / 2;
+        ctx.translate(fx, 0); ctx.scale(-1, 1); ctx.translate(-fx, 0);
+      }
+
+      if (!ASSETS.draw(ctx, 'acorn_grow', x + pad, y + pad, size, size)) {
 
         const cx = x + cs / 2;
 
@@ -1125,7 +1582,7 @@ const _sceneMethods = {
 
         // 按该树自己的白化进度叠霜白（0=没白，1=全白）——下雪过程中逐渐盖白，不是一进冬天就白
 
-        const frost = this._winterFrosted('acorn');
+        const frost = this._winterFrosted('acorn_grow');
 
         if (frost && frost.width) {
 
@@ -1142,6 +1599,8 @@ const _sceneMethods = {
         }
 
       }
+
+      if (flip) ctx.restore();                      // 翻转坐标系收尾：必须在 frost 块之后、return 之前
 
       return;
 
@@ -1179,7 +1638,8 @@ const _sceneMethods = {
 
       // 不再用「整体上移 overflow」——那会让叶子内容在边缘格被推到格子下方显得「往下挤」。
 
-      const crownSize = cs * 1.5;
+      // 大小按格确定性随机 5 档（_treeCrownSize 内部已 Math.round 成整数像素，与描边 A 烘焙同源）
+      const crownSize = this._treeCrownSize(fr, fc, cs);
 
       const crownW = crownSize, crownH = crownSize;
 

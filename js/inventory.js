@@ -54,6 +54,7 @@ UI.closeInventory = function() {
   this._inventoryOpen = false;
   Engine.resume();
   this.render();
+  this._renderBottomHotbar();   // 关背包回主界面即时刷新常驻底部快捷栏 DOM
 };
 
 
@@ -161,11 +162,42 @@ UI._afterInvChange = function(index) {
     const i = index - 27;
     const s = Player.invSlots[index];
     Player._hotbarSlots[i] = s ? Player._identityFromSlot(s) : null;
+    // 拖回快捷栏即恢复「新物品进快捷栏」规则：写回身份后解除该类型的移除标志
+    if (s) {
+      const tk = s.kind === 'seed' ? 'seed:' + s.seedId
+        : s.kind === 'tool' ? 'tool:' + s.toolId
+        : s.kind === 'resource' ? 'resource:' + s.id
+        : (s.stackId || '');
+      if (tk) { Player._hbRemovedTypes = Player._hbRemovedTypes || new Set(); Player._hbRemovedTypes.delete(tk); }
+    }
     // 同步快捷栏变化到 inventory（商店背包格依赖此数据）
     if (s && s.kind === 'tool' && s.toolId === 'acorn') {
       if (s.count > 0) Player.inventory['acorn'] = s.count;
       else delete Player.inventory['acorn'];
+      // 互斥：橡果进了快捷栏，清掉主背包里所有橡果格（避免 rebuild 前双显）
+      for (let m = 0; m < 27; m++) {
+        if (Player.invSlots[m] && Player.invSlots[m].kind === 'tool' && Player.invSlots[m].toolId === 'acorn') Player.invSlots[m] = null;
+      }
     }
+  } else {
+    // 互斥：橡果进了主背包，清掉快捷栏里的橡果身份 + 主背包其它橡果格（只留本格）
+    const s = Player.invSlots[index];
+    if (s && s.kind === 'tool' && s.toolId === 'acorn') {
+      for (let h = 0; h < Player._hotbarSlots.length; h++) {
+        if (Player._hotbarSlots[h] && Player._hotbarSlots[h].toolId === 'acorn') Player._hotbarSlots[h] = null;
+      }
+      for (let m = 0; m < 27; m++) {
+        if (m !== index && Player.invSlots[m] && Player.invSlots[m].kind === 'tool' && Player.invSlots[m].toolId === 'acorn') Player.invSlots[m] = null;
+      }
+    }
+  }
+  // 橡果渲染视图收敛：无论落点在哪，36 格 invSlots 里 acorn 只保留本次落点 index 这一格，
+  // 其余 acorn 渲染格全部置 null。修复「手动拖橡果到主背包、rebuild 前快捷栏渲染格仍挂橡果」的双显窗口。
+  // 只清渲染视图 invSlots，不动数量权威 Player.acorns / inventory['acorn']（快捷栏格 165-168 的 count 同步在上面已做）。
+  const acornViews = [];
+  for (let i = 0; i < 36; i++) if (Player.invSlots[i] && Player.invSlots[i].kind === 'tool' && Player.invSlots[i].toolId === 'acorn') acornViews.push(i);
+  if (acornViews.length > 1) {
+    for (const i of acornViews) if (i !== index) Player.invSlots[i] = null;
   }
 };
 
@@ -202,6 +234,7 @@ UI._invMouseDown = function(index, button) {
 UI._invPickUp = function(index, half) {
   const slot = Player.invSlots[index];
   if (!slot) return;
+  const inHot = index >= 27 && index < 36;
   if (slot.kind === 'stack') {
     if (half) {
       const take = Math.ceil(slot.count / 2);
@@ -216,6 +249,19 @@ UI._invPickUp = function(index, half) {
     // 工具/种子：整拿（不可拆分）
     this._invHeld = Object.assign({}, slot);
     Player.invSlots[index] = null;
+  }
+  if (inHot && !Player.invSlots[index]) {
+    // 从快捷栏格整拿（拿起后原格已空）：同步清掉该格的持久身份，
+    // 否则下次 _rebuildInvSlots 会把 _hotbarSlots 里的旧身份复活（弹回/双显）。
+    // 放回原格时由 _afterInvChange(index) 重新写回 _hotbarSlots，不冲突。
+    Player._hotbarSlots[index - 27] = null;
+    // 记忆标志：用户手动拖出快捷栏的物品类型，rebuild 不再自动回补（typeKey 规范：
+    // tool:{toolId} / seed:{seedId} / resource:{id} / stackId（即 'crop:wheat'））
+    const tk = slot.kind === 'seed' ? 'seed:' + slot.seedId
+      : slot.kind === 'tool' ? 'tool:' + slot.toolId
+      : slot.kind === 'resource' ? 'resource:' + slot.id
+      : (slot.stackId || '');
+    if (tk) { Player._hbRemovedTypes = Player._hbRemovedTypes || new Set(); Player._hbRemovedTypes.add(tk); }
   }
 };
 

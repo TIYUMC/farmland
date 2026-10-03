@@ -22,7 +22,8 @@ const Engine = {
   running: false,
   tickTimer: null,
   paused: false,
-  debugFast: false,    // 调试快进：开启后 0.5 秒 = 1 天（临时功能）
+  debugFast: false,    // 调试模式开关：商店全开锁 / 作物无视浇水快生（商店、farm.js 等读它；时间节奏归 timeScale，不在此决定）
+  timeScale: 1,     // 时间倍速 0.5 / 1 / 3（1.0 = 现状速度）
 
   // === 外部 hooks ===
   onHourChange: null,     // callback(hour, minute)
@@ -52,18 +53,10 @@ const Engine = {
     if (this.tickTimer) { clearTimeout(this.tickTimer); this.tickTimer = null; }
   },
 
-  /** 内部：每分钟滴答（调试快进时改为 1 秒 = 1 天） */
+  /** 内部：每分钟滴答（时间节奏只由 timeScale 决定） */
   _startTick() {
-    // 调试快进：每 0.5 秒直接推进一整天（作物生长/浇水重置/体力恢复都在 nextDay 内完成），
-    // 绕过 onDayEnd 结算弹窗，避免每秒弹窗打断操作。
-    if (this.debugFast) {
-      this.tickTimer = setTimeout(() => {
-        if (!this.running || this.paused) return;
-        this.nextDay();
-      }, 500);
-      return;
-    }
-    const msPerTick = (DATA.REAL_SECS_PER_GAME_HOUR * 1000) / 60; // 每分钟
+    // msPerTick 按 timeScale 缩放（0.5x→400ms/tick、1x→200ms、3x→≈67ms）；时间节奏统一归 timeScale
+    const msPerTick = (DATA.REAL_SECS_PER_GAME_HOUR * 1000) / 60 / this.timeScale; // 每分钟
     const tick = () => {
       if (!this.running || this.paused) return;
       this.minute += 1; // 每 tick 走 1 分钟（配合 msPerTick，1 游戏小时 ≈ 12 秒，一天≈3.6 分钟）
@@ -83,11 +76,21 @@ const Engine = {
     this.tickTimer = setTimeout(tick, msPerTick);
   },
 
-  /** 切换调试快进（1 秒 = 1 天）。会干净地重启计时循环以切换模式。 */
+  /** 切换调试模式（商店开锁/作物快生），不改变时间节奏（节奏归 timeScale）。
+   *  _clearTickTimer + _startTick 现在只是无副作用地按当前 timeScale 重启滴答。 */
   setDebugFast(on) {
     this.debugFast = !!on;
     this._clearTickTimer();
     this._startTick();
+  },
+
+  /** 切换时间倍速（0.5x / 1x / 3x）：立即重启计时循环，下一 tick 用新间隔；不丢时钟状态。
+   *  与调试模式互斥：切倍速时若 debugFast 开着则先关掉，二者不叠加。 */
+  setTimeScale(scale) {
+    this.timeScale = (scale === 0.5 || scale === 3) ? scale : 1;
+    if (this.debugFast) this.setDebugFast(false);   // 互斥：切正常速度
+    this._clearTickTimer();
+    if (this.running) this._startTick();            // 立即以新间隔重启滴答
   },
 
   /** 强制暂停时间（UI操作时） */

@@ -3,3 +3,8 @@ _emoji_inventory.txt
 *.bak
 .DS_Store
 Thumbs.db
+
+# 服务器日志与探针（不入库）
+server.log
+*.log
+_probe_sapling_outline.html

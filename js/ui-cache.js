@@ -23,73 +23,6 @@ const _cacheMethods = {
     this._farmDirty = false;
   },
 
-  /** 增量重绘被标记为脏的格子 */
-
-  _refreshDirtyCells() {
-    if (!this._farmCache) return;
-    const sctx = this._farmCache.getContext('2d');
-    const cs = this.cellSize;
-    const colors = this._seasonColorAt();
-
-    // 重绘 farmCache 中的脏格
-    const dirtyCells = [];
-    for (const key of this._farmCacheDirty) {
-      const [r, c] = key.split(',').map(Number);
-      dirtyCells.push({ r, c });
-    }
-    if (dirtyCells.length > 0) {
-      // 第一遍：重绘地面（草/泥土/缠根泥土）
-      for (const { r, c } of dirtyCells) {
-        const x = c * cs, y = r * cs;
-        sctx.clearRect(x, y, cs, cs);
-        this._renderCell(sctx, r, c, x, y, cs, colors);
-      }
-      // 第二遍：重绘树（确保树在地面之上）——仅在树场场景
-      if (this.scene === 'treeFarm') {
-        for (const { r, c } of dirtyCells) {
-          const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
-          if (t) {
-            const x = c * cs, y = r * cs;
-            this._drawTreeEntity(sctx, x, y, cs, t);
-          }
-        }
-      }
-    }
-    this._farmCacheDirty.clear();
-
-    // 重绘 vegCache 中的脏格（无论有无积雪都刷新，因为花朵/草叶都在这里）
-    if (this._vegCacheDirty.size > 0) {
-      // 确保 vegCache 尺寸正确（与 _buildVegCache 保持一致）
-      if (!this._vegCache) this._vegCache = document.createElement('canvas');
-      const cv = this._vegCache;
-      if (cv.width !== this.canvas.width || cv.height !== this.canvas.height) {
-        cv.width = this.canvas.width;
-        cv.height = this.canvas.height;
-      }
-      const vctx = cv.getContext('2d');
-      const cs = this.cellSize;
-      const colors = this._seasonColorAt();
-
-      // 只需要重绘脏格区域（不清空整个画布，只clear脏格）
-      for (const key of this._vegCacheDirty) {
-        const [r, c] = key.split(',').map(Number);
-        const x = c * cs, y = r * cs;
-        vctx.clearRect(x, y, cs, cs);  // 只clear当前脏格
-        this._renderVegCell(vctx, r, c, x, y, cs, colors);
-        this._vegCacheDirty.delete(key);
-      }
-    }
-
-    // _grassBaseCache 失效（在 _invalidateCell 里被置 null）时必须**完整**重建，不能只重建脏格。
-    // 只建脏格会让缓存变成稀疏对象：脏格走「预渲染底 + 摆动顶层」，其余草格走「实时兜底」，
-    // 两条路径画法不同 → 被点击的那一格视觉与周围不一致，且不会自动恢复（单格异常色）。
-    // _rebuildGrassBase() 只重画草颤底缓存，不触碰 farmCache / vegCache，
-    // 因此不会像 _rebuildFarmCache() 那样引起整屏闪烁。
-    if (this._grassBaseCache === null) {
-      this._rebuildGrassBase();
-    }
-  },
-
   /** 渲染单个格子到给定的 ctx */
 
   _renderCell(ctx, r, c, x, y, cs, colors) {
@@ -102,6 +35,13 @@ const _cacheMethods = {
     if (this.scene === 'treeFarm') {
       // 树场：只画草、缠根泥土，不画树（树由 _renderTreeFarmScene 最后统一画）
       const hasTree = !!(TreeFarm.trees[r] && TreeFarm.trees[r][c]);
+      if (hasTree) {
+        // 树格也必须画地面：增量刷新会先 clearRect 本格再调本方法，
+        // 有树时不画会在 _farmCache 上留透明洞，合成时露出绿色底（整格纯绿）。
+        // 参数与全量 _renderTreeFarmScene(ui-scene.js:1121) 逐字一致：
+        // 有树按裸土画（gstate 传 0、isBare 强制 true）。
+        this._drawGrassGroundCell(ctx, r, c, x, y, cs, 0, true, colors);
+      }
       if (!hasTree) {
         if (TreeFarm.getRootedAt(r, c)) {
           // 锄头翻出的缠根泥土：先铺土色底 + 贴 rooted_dirt
@@ -139,11 +79,7 @@ const _cacheMethods = {
     
     // 花朵
     const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
-    if (flower > 0) {
-      const fkey = this._flowerDef(flower).key;
-      this._drawPaddedAsset(ctx, fkey, x, y, cs, 0)
-        || this._fillCell(ctx, x, y, cs, '#a9b765');
-    }
+    if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
     
     // 作物
     if (cell && cell.crop) {
@@ -185,10 +121,7 @@ const _cacheMethods = {
     }
     
     const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
-    if (flower > 0) {
-      const fkey = this._flowerDef(flower).key;
-      this._drawPaddedAsset(ctx, fkey, x, y, cs, 0) || this._fillCell(ctx, x, y, cs, '#a9b765');
-    }
+    if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
   },
 
 
@@ -372,13 +305,7 @@ const _cacheMethods = {
 
         const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
 
-        if (flower > 0) {
-
-          const fkey = this._flowerDef(flower).key;
-
-          this._drawPaddedAsset(ctx, fkey, x, y, cs, 0) || this._fillCell(ctx, x, y, cs, '#a9b765');
-
-        }
+        if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
 
       });
 

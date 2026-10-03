@@ -151,6 +151,10 @@ const TreeFarm = {
   plantAcorn(row, col) {
     const e = this._requireEmptyCell(row, col);
     if (e) return e;
+    // 长着草(绿/黄)的格子不能种：与 UI 层前置判定同口径，兜底路径也挡住。
+    // 裸土(bare)/缠根泥土(rooted) 仍可种（沿用现状，不扩大范围）。
+    const g = (this.grass[row] && this.grass[row][col]) || 0;
+    if (g === 1 || g === 2) return { ok: false, reason: '这格有草，先用锄头除草' };
     this.trees[row][col] = { stage: 'sapling', days: 0 };
     this._clearFrost(row, col);                // 新树苗：霜白从 0 起
     if (typeof Quest !== 'undefined') Quest.trigger('plantSapling'); // 任务书：林场主

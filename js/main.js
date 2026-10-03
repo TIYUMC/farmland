@@ -70,7 +70,7 @@
     const btnSave = document.getElementById('btn-save');
     if (btnSave) btnSave.addEventListener('click', () => { SaveGame.save(); _flashSave(); });
 
-    // 调试快进按钮（HUD 顶栏）：开启后 0.5 秒 = 1 天，方便快速测试作物生长/时间流逝
+    // 调试模式按钮（HUD 顶栏）：开调试模式 = 商店全开锁 + 作物无视浇水快生；时间节奏不在此决定，统一用倍速下拉
     const invDebug = document.getElementById('btn-inv-debug');
     if (invDebug) invDebug.addEventListener('click', () => {
       const on = !Engine.debugFast;
@@ -79,7 +79,13 @@
       if (on && typeof UI.closeSummary === 'function') UI.closeSummary();
       // 关闭调试时若在树场，强制返回农场
       if (!on && typeof UI !== 'undefined' && UI.scene === 'treeFarm') UI.toggleScene();
-      UI.showStatus(on ? '⚡ 调试快进：0.5 秒 = 1 天' : '调试快进已关闭', 1200);
+      // 调试开关切换：shop 开着时立即重建交易列表（全开锁/恢复锁，遮罩秒消/秒现，无需关店重开）
+      if (typeof UI !== 'undefined' && UI._shopOpen && UI._buildTrades) {
+        UI._trades = UI._buildTrades();
+        UI._shopDirty = true;
+      }
+      UI.showStatus(on ? '⚡ 调试模式：商店全开锁·作物快生（时间速度用倍速下拉）'
+                       : '调试模式已关闭', 1600);
     });
     // 调试·跳季下拉（底部）：直接跳到指定季节的第 1 天
     const seasonJump = document.getElementById('season-jump');
@@ -90,6 +96,26 @@
         _jumpToSeason(v);
       });
     }
+    // 时间倍速下拉（0.5x / 1.0x / 3x）：只缩放 tick 间隔，与调试模式互斥（选倍速自动关调试模式）
+    const timeScaleSel = document.getElementById('time-scale');
+    if (timeScaleSel) timeScaleSel.addEventListener('change', () => {
+      const s = parseFloat(timeScaleSel.value);
+      if (isNaN(s)) return;
+      Engine.setTimeScale(s);
+      // debugFast 被互斥关掉 → 同步按钮视觉态
+      const dbgBtn = document.getElementById('btn-inv-debug');
+      if (dbgBtn) dbgBtn.classList.remove('debug-on');
+      UI.showStatus('时间倍速 ' + s + 'x', 1000);
+    });
+    // 调试：改天气下拉（晴 / 雨，冬季雨显示为雪）。占位项「天气…」无效值忽略；同状态不重置倒计时。
+    const weatherJump = document.getElementById('weather-jump');
+    if (weatherJump) weatherJump.addEventListener('change', () => {
+      const v = weatherJump.value;
+      if (v !== 'clear' && v !== 'rain') return;   // 占位项「天气…」无效值，忽略
+      if (UI._weatherPhase === v) return;           // 同状态：不重置倒计时、不重复浇灌
+      UI._setWeatherPhase(v);
+      UI.showStatus(v === 'rain' ? '天气：雨（冬季显示为雪）' : '天气：晴', 1000);
+    });
     // 任务书入口：底部工具栏紫色书按钮（商店右边），点开/关任务书
     const questBtn = document.getElementById('btn-quest');
     if (questBtn) questBtn.addEventListener('click', () => UI.openQuest());
@@ -277,6 +303,11 @@
     UI._grassBaseCache = null;
     UI._farmCacheKey = '';
     UI._farmDirty = true;
+    UI._grassOutline = null;
+    UI._grassBodyCanvas = null;
+    UI._grassOutlineCanvas = null;
+    UI._grassDataRev = 0;
+    UI._grassRingCropCache = null;
     UI.render();
     UI._renderBottomHotbar();
     UI._startAnimLoop();
@@ -295,6 +326,11 @@
     UI._grassBaseCache = null;
     UI._farmCacheKey = '';
     UI._farmDirty = true;
+    UI._grassOutline = null;
+    UI._grassBodyCanvas = null;
+    UI._grassOutlineCanvas = null;
+    UI._grassDataRev = 0;
+    UI._grassRingCropCache = null;
     UI.render();
     UI._renderBottomHotbar();
     UI._startAnimLoop();

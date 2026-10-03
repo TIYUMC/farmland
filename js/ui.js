@@ -109,7 +109,7 @@ const UI = {
 
   _hoverCell: null, // { row, col } | null
 
-  _mouseX: 0, _mouseY: 0, // 画布内鼠标像素坐标（供画布上 UI 按钮的悬停高亮判定）
+  _mouseX: -1e4, _mouseY: -1e4, // 画布内鼠标像素坐标（供画布 UI 高亮 + 草描边距离渐变）；-1e4=未移动/已离开→描边默认10%
 
   scene: 'farm',    // 'farm' = 主农场；'treeFarm' = 树场（独立子场景）。切换时 markFarmDirty 重建静态层。
 
@@ -449,6 +449,7 @@ const UI = {
       if (this._hoverRaf) { cancelAnimationFrame(this._hoverRaf); this._hoverRaf = null; }
 
       this._hoverCell = null;
+      this._mouseX = -1e4; this._mouseY = -1e4;   // 移出画布：草描边距离极大→回落默认 10%（_drawGrassOutline 据此淡出）
 
       this._needsRender = true;
       this.render();
@@ -456,6 +457,14 @@ const UI = {
     });
 
     this.canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+
+    // 手机无鼠标：用手指当「靠近点」驱动草描边距离渐变（_eventToCanvas 已取 e.touches[0]）
+    this.canvas.addEventListener('touchmove', (e) => this._onMouseMove(e), { passive: false });
+    this.canvas.addEventListener('touchend', () => {
+      if (this._hoverRaf) { cancelAnimationFrame(this._hoverRaf); this._hoverRaf = null; }
+      this._mouseX = -1e4; this._mouseY = -1e4;   // 抬手：草描边回落默认 10%
+      this._needsRender = true; this.render();
+    });
 
 
 
@@ -596,6 +605,7 @@ const UI = {
     this._vegCacheDirty = new Set();  // vegCache 需要重绘的格子集合
     this._grassBaseCache = null;      // 草格底缓存：预渲染草格底图，用于草颤动画
     this._farmCacheKey = '';          // 缓存签名，首次渲染时因 _farmCache=null 触发全量重建
+    this._grassDataRev = 0;           // 农场数据修订号：除草/耕地/季节等改变草分布时 +1，使合并草轮廓缓存(_ensureGrassOutline)失效
     this._farmDirty = false;          // 全量重建标志，确保首次渲染时正常重建缓存
 
     // 性能缓存：避免每帧重复计算
@@ -723,6 +733,7 @@ const UI = {
     this._grassBaseCache = null;
     this._farmCacheKey = '';
     this._farmDirty = true;
+    this._grassDataRev = (this._grassDataRev || 0) + 1;   // 尺寸变化→合并草轮廓缓存失效（key 含画布尺寸，下一帧自然重建）
 
     // 画布位置变了，商店 DOM 叠层需重新对齐
 
@@ -849,6 +860,9 @@ const UI = {
     // 这样重画的草继承雨天的朦胧感，且不会盖住选中框（图层顺序修正）。
 
     if (this._grassShakes && this._grassShakes.length) this._drawGrassShakes(ctx, dt);
+
+    // 草白描边实时层：整片合并外轮廓（无相邻双白线交叉），alpha 随鼠标到最近草质心距离 10%→100% 渐变（草身不变）
+    this._drawGrassOutline(ctx);
 
     // 动态层：未浇水作物的呼吸高亮
     if (this.scene === 'farm') {
@@ -2694,7 +2708,7 @@ const UI = {
 
   /** 标记农场静态层已过期，下次 render 时重建缓存 */
 
-  markFarmDirty() { this._farmDirty = true; this._needsRender = true; },
+  markFarmDirty() { this._farmDirty = true; this._needsRender = true; this._grassDataRev = (this._grassDataRev || 0) + 1; },
 
   /** 标记单个格子需要重绘（增量更新）。
    *  用于点击操作后只更新变化的格子，避免重建全部120格。 */
@@ -2714,6 +2728,8 @@ const UI = {
     }
     // 任何格子操作都可能改变植被状态，无条件失效 vegCache
     this._vegCacheDirty.add(key);
+    // 格子植被可能变化（除草/耕地/种树…）→ 合并草轮廓缓存失效，下帧重建
+    this._grassDataRev = (this._grassDataRev || 0) + 1;
     // 同时失效 grassBaseCache：除草/种树等操作改变了地面状态，旧的草底缓存已过期
     this._grassBaseCache = null;
     // 注意：不设置 _farmDirty=true，避免每次点击都触发全量重建（导致闪烁）
@@ -3023,6 +3039,16 @@ const UI = {
       }
       // 第二遍：重绘树（确保树在地面之上）——仅在树场场景
       if (this.scene === 'treeFarm') {
+        // A 子循环：脏集里的 grown 树先画「地面树荫」，参数逐字抄全量 ui-scene.js:1185。
+        // 全量路径是「第三遍树荫 → 第四遍树冠」，增量必须同序：先树荫后树冠，
+        // 否则树冠会把树荫糊住复现「阴影透到叶子上面」的老 bug（树冠向上溢出会盖进上一行的格）。
+        for (const { r, c } of dirtyCells) {
+          const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
+          if (t && t.stage === 'grown') {
+            this._drawShadowEllipse(sctx, c * cs + cs / 2, r * cs + cs * 0.72, cs * 0.52, cs * 0.26, 0.16);
+          }
+        }
+        // B 子循环：树实体（树冠 + 树干）
         for (const { r, c } of dirtyCells) {
           const t = (TreeFarm.trees[r] && TreeFarm.trees[r][c]) || null;
           if (t) {
@@ -3048,13 +3074,36 @@ const UI = {
       const colors = this._seasonColorAt();
 
       // 只需要重绘脏格区域（不清空整个画布，只clear脏格）
+      // 注意：邻居草身会溢出画进脏格矩形（_grassVariation ox/±17% + scale 1.25），
+      // 只 clear+重画脏格会擦掉邻居溢出那截 →「耕地后相邻格只剩描边白圈没草身」。
+      // 修复：clear 只清脏格；随后补画「脏格 ∪ 8 邻格」（行主序，与全量构建同 z 序），
+      // 邻格补画不 clear（vegCache 透明底只叠画），把溢出那截恢复。
       for (const key of this._vegCacheDirty) {
         const [r, c] = key.split(',').map(Number);
-        const x = c * cs, y = r * cs;
-        vctx.clearRect(x, y, cs, cs);  // 只clear当前脏格
-        this._renderVegCell(vctx, r, c, x, y, cs, colors);
-        this._vegCacheDirty.delete(key);
+        vctx.clearRect(c * cs, r * cs, cs, cs);
       }
+      const ROWS = DATA.FARM.ROWS, COLS = DATA.FARM.COLS;
+      const paintSet = new Set();
+      for (const key of this._vegCacheDirty) {
+        const [r, c] = key.split(',').map(Number);
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const rr = r + dr, cc = c + dc;
+            if (rr < 0 || cc < 0 || rr >= ROWS || cc >= COLS) continue;
+            paintSet.add(rr + ',' + cc);
+          }
+        }
+      }
+      const paintList = [...paintSet].sort((a, b) => {
+        const [ar, ac] = a.split(',').map(Number);
+        const [br, bc] = b.split(',').map(Number);
+        return ar * COLS + ac - (br * COLS + bc);
+      });
+      for (const key of paintList) {
+        const [r, c] = key.split(',').map(Number);
+        this._renderVegCell(vctx, r, c, c * cs, r * cs, cs, colors);
+      }
+      this._vegCacheDirty.clear();
     }
 
     // _grassBaseCache 失效（在 _invalidateCell 里被置 null）时必须**完整**重建，不能只重建脏格。
@@ -3113,13 +3162,9 @@ const UI = {
         || this._fillCell(ctx, x, y, cs, cell.watered ? colors.water : colors.soil);
     }
     
-    // 花朵
+    // 花朵（花格绘制统一走 _drawFlowerCell，含 flip，与静态/植被/描边三路径同朝向）
     const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
-    if (flower > 0) {
-      const fkey = this._flowerDef(flower).key;
-      this._drawPaddedAsset(ctx, fkey, x, y, cs, 0)
-        || this._fillCell(ctx, x, y, cs, '#a9b765');
-    }
+    if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
     
     // 作物
     if (cell && cell.crop) {
@@ -3160,10 +3205,7 @@ const UI = {
     }
     
     const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
-    if (flower > 0) {
-      const fkey = this._flowerDef(flower).key;
-      this._drawPaddedAsset(ctx, fkey, x, y, cs, 0) || this._fillCell(ctx, x, y, cs, '#a9b765');
-    }
+    if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
   },
 
 
@@ -3344,13 +3386,7 @@ const UI = {
 
         const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
 
-        if (flower > 0) {
-
-          const fkey = this._flowerDef(flower).key;
-
-          this._drawPaddedAsset(ctx, fkey, x, y, cs, 0) || this._fillCell(ctx, x, y, cs, '#a9b765');
-
-        }
+        if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
 
       });
 
@@ -3681,20 +3717,11 @@ const UI = {
       // 画花朵：flowers 数组与 dirt/grass 同维；花朵格 = flowers[r][c] > 0（草=0，视觉替换草方块）
 
       // 数据驱动：flowers[r][c] 的值即花种编号(1..N)，贴图键查 DATA.FLOWERS（加花种不用改本处）
+      // 花格绘制统一走 _drawFlowerCell（含 flip，与静态/植被/描边三路径同朝向）
 
       const flower = (Farm.flowers && Farm.flowers[r]) ? (Farm.flowers[r][c] || 0) : 0;
 
-      if (flower > 0) {
-
-        const fkey = this._flowerDef(flower).key;
-
-        // pad=0 让花朵占满整格（视觉上像地里长出来的，与草方块同占位）
-
-        this._drawPaddedAsset(ctx, fkey, x, y, cs, 0)
-
-          || this._fillCell(ctx, x, y, cs, '#a9b765');
-
-      }
+      if (flower > 0) this._drawFlowerCell(ctx, r, c, x, y, cs, flower);
 
 
 
@@ -4422,13 +4449,22 @@ const UI = {
 
     if (t.stage === 'sapling') {
 
-      // 树苗：用 acorn 像素贴图绘制；素材缺失时回退简单像素方块，不出 emoji
+      // 树苗（种下去的橡果）：用 16×16 grow 贴图 acorn_grow；素材缺失时回退简单像素方块，不出 emoji
+      // 尺寸按格确定性随机（_treeSaplingSize），最高档 = 现状 cs-8；pad 自算，只可能更小或持平
 
-      const pad = 4, size = cs - pad * 2;
+      const size = this._treeSaplingSize(fr, fc, cs);          // 影子副本同步（运行时被 ui-scene.js 覆盖）
+      const pad = Math.round((cs - size) / 2);
 
       const winter = this._isWinter();
+      const flip = this._treeSaplingFlip(fr, fc);              // 与 ui-scene.js 同一 helper，防双写漂移
 
-      if (!ASSETS.draw(ctx, 'acorn', x + pad, y + pad, size, size)) {
+      if (flip) {
+        ctx.save();
+        const fx = x + cs / 2;
+        ctx.translate(fx, 0); ctx.scale(-1, 1); ctx.translate(-fx, 0);   // 绕格垂直中线水平镜像
+      }
+
+      if (!ASSETS.draw(ctx, 'acorn_grow', x + pad, y + pad, size, size)) {
 
         const cx = x + cs / 2;
 
@@ -4454,7 +4490,7 @@ const UI = {
 
         // 按该树自己的白化进度叠霜白（0=没白，1=全白）——下雪过程中逐渐盖白，不是一进冬天就白
 
-        const frost = this._winterFrosted('acorn');
+        const frost = this._winterFrosted('acorn_grow');
 
         if (frost && frost.width) {
 
@@ -4471,6 +4507,8 @@ const UI = {
         }
 
       }
+
+      if (flip) ctx.restore();                      // 翻转坐标系收尾：必须在 frost 块之后、return 之前
 
       return;
 
@@ -4504,7 +4542,8 @@ const UI = {
 
       // 不再用「整体上移 overflow」——那会让叶子内容在边缘格被推到格子下方显得「往下挤」。
 
-      const crownSize = cs * 1.5;
+      // 大小按格确定性随机 5 档（_treeCrownSize 内部已 Math.round 成整数像素，与描边 A 烘焙同源）
+      const crownSize = this._treeCrownSize(fr, fc, cs);
 
       const crownW = crownSize, crownH = crownSize;
 
@@ -4595,10 +4634,17 @@ const UI = {
       }
 
       // 脏标记检测：本帧是否真的有内容需要更新
+      // 时间驱动动画（雪/落叶/粒子）在 render() 内推进，活跃时强制继续渲染；
+      // 全静默（雪全停/叶落尽/粒子播完）时回到不渲染，帧率限制(33/16ms)与 _isPageVisible 检查均在门槛之前，不受影响。
+      const snowMoving = this._isWinter() && this._snowFlakes &&
+                         this._snowFlakes.some(f => !f.stopped && !f._eaten);
+      const leafFalling = this._fallingLeaves && this._fallingLeaves.length > 0;
+      const particlesAlive = this._particles && this._particles.list.length > 0;
       const needsRender = this._needsRender ||
                           (this._grassShakes && this._grassShakes.length > 0) ||
                           (this._ripples && this._ripples.length > 0) ||
-                          this._transition;
+                          this._transition ||
+                          snowMoving || leafFalling || particlesAlive;
       if (!needsRender) {
         this._animRaf = requestAnimationFrame(loop);
         return;
@@ -4864,18 +4910,16 @@ const UI = {
     }
 
     // 每次mousemove都更新鼠标坐标，确保高亮跟随鼠标位置
-    const prevHover = this._hoverCell;
     this._hoverCell = next;
     this._mouseX = x; this._mouseY = y;
 
-    // 只要格子变化就触发表单重绘（保证高亮框跟随）
-    if (prevHover !== next) {
-      if (!this._hoverRaf) {
-        this._hoverRaf = requestAnimationFrame(() => {
-          this._hoverRaf = null;
-          this.render();
-        });
-      }
+    // 草描边实时层随鼠标距离渐变(10%→100%)：每次移动都补一次 rAF render，
+    // 让透明度连续跟随鼠标（主循环有帧率节流，多余 rAF 会自动合并）
+    if (!this._hoverRaf) {
+      this._hoverRaf = requestAnimationFrame(() => {
+        this._hoverRaf = null;
+        this.render();
+      });
     }
   },
 
@@ -5505,6 +5549,17 @@ const UI = {
         this.showStatus('没有橡果，去砍树掉落 1~3 个再来种', 1200);
 
       } else {
+
+        // 前置判定：这格长着草(绿/黄)先不种，提示用锄头先除草。
+        // 必须放在 _startBusy 之前，才能「点了立刻提示」，而不是进度条闪一下才失败。
+        const g0 = (TreeFarm.grass && TreeFarm.grass[row]) ? (TreeFarm.grass[row][col] || 0) : 0;
+        if (g0 === 1 || g0 === 2) {
+          const hoeIcon = this._iconHTML('wooden_hoe', 'status-hoe', '锄头') || '';
+          this.showStatus('这格长着草，先用' + hoeIcon + '锄头把它锄掉再种橡果', 1400);
+          this._needsRender = true;
+          this.render();
+          return;
+        }
 
         this._startBusy('种植', null,
 

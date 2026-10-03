@@ -229,12 +229,16 @@ body {
 .tool-emoji { font-size: 13px; line-height: 1; }
 .inv-emoji { font-size: 13px; line-height: 1; }
 
-/* ===== 调试·跳季下拉（HUD 内，竖排在调试按钮正下方）===== */
+/* ===== 调试下拉（HUD 内，与调试按钮横排）===== */
 .debug-cluster {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  display: flex; flex-direction: row; align-items: center; gap: 6px;
 }
-/* 调试模式下季节跳转下拉（上栏控件） */
-#season-jump {
+/* 调试下拉窄列（3 个 select 竖叠），与调试按钮并排、按钮垂直居中对整列 */
+.debug-selects {
+  display: flex; flex-direction: column; gap: 3px;
+}
+/* 调试 cluster 内下拉统一外观（跳季/倍速/天气三框共用；原 #season-jump 与 #time-scale 两份重复块已合并，顺带给 #weather-jump 补上） */
+.debug-cluster select {
   background: #1c1c22;
   color: var(--text);
   border: 1px solid var(--border);
@@ -245,7 +249,7 @@ body {
   cursor: pointer;
   max-width: 92px;
 }
-#season-jump:focus { outline: none; border-color: var(--accent); }
+.debug-cluster select:focus { outline: none; border-color: var(--accent); }
 
 /* ⚠ 手持物品槽 (#held-slot) 已移除：当前选中的工具/种子改由「底部快捷栏」高亮表达（见 #bottom-hotbar）。
    下面这组 #held-slot 规则是待清理的死样式，暂无任何 DOM 与其对应。 */
@@ -1264,8 +1268,8 @@ body {
   #hud-datetime { font-size: 13px; line-height: 1.25; word-break: break-all; }
   #hud-stamina { font-size: 13px; }
   #stamina-bar-bg { width: 100%; height: 8px; border-radius: 4px; }
-  #season-jump { padding: 1px 2px; font-size: 9px; width: 100%; font-family: 'Silkscreen', sans-serif; }
-  #hud-bar .debug-cluster { margin-left: 0; align-items: stretch; }
+  .debug-cluster select { padding: 1px 2px; font-size: 9px; width: 100%; font-family: 'Silkscreen', sans-serif; }
+  #hud-bar .debug-cluster { margin-left: 0; align-items: stretch; flex-direction: column; }
 
   /* ── 画布区占满剩余空间 ── */
   #game-area { flex: 1 1 auto; min-width: 0; }
@@ -1326,7 +1330,7 @@ body {
   .hud-label img { width: 14px; height: 14px; }
   #hud-datetime, #hud-stamina { font-size: 13px; }
   #stamina-bar-bg { width: 80px; height: 10px; border-radius: 5px; }
-  #season-jump { padding: 1px 4px; font-size: 13px; font-family: 'Silkscreen', sans-serif; }
+  .debug-cluster select { padding: 1px 4px; font-size: 13px; font-family: 'Silkscreen', sans-serif; }
   #hud-bar .debug-cluster { margin-left: 0; }
 
   /* 手机端：竖排两行（快捷栏第一行、按钮第二行），各自横排可滑动 */

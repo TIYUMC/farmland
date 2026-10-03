@@ -337,6 +337,26 @@ const _weatherMethods = {
 
   },
 
+  /** 调试用：设指定天气阶段（clear/rain）并重置该阶段倒计时，行为与 R 键 _toggleRain 同一套底层逻辑。
+   *  与 _switchWeatherPhase 对称：那是 toggle（雨→晴/晴→雨），本方法是直接设值。 */
+  _setWeatherPhase(phase) {
+
+    const now = this._totalGameHours();
+
+    if (phase === 'rain') {
+
+      this._startRainAndWater(now);      // 重置雨期倒计时 + 浇灌主农场（冬天自动跳过）
+
+    } else {
+
+      this._clearWeather(now);           // 重置下次降雨倒计时
+
+    }
+
+    this._syncIsRaining();
+
+  },
+
 
 
   /** R 键：手动切换当前天气（同时重置该阶段倒计时，避免立刻被自动切换翻回） */

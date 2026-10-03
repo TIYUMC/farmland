@@ -95,10 +95,12 @@ UI._findShopItem = function(id) {
 
 /** 构建交易选项（基于 DATA.SHOP_ITEMS：作物生成「买种子」+「卖作物」两项；工具生成「买工具」一项） */
 UI._buildTrades = function() {
+  // 调试模式下无视任务锁，全部选项可见可交易
+  const dbg = (typeof Engine !== 'undefined' && Engine.debugFast);
   const trades = [];
   for (const item of DATA.SHOP_ITEMS) {
-    // 检查解锁条件（如果设置了lockOn，则必须完成对应任务才能解锁）
-    const locked = (item.lockOn && typeof Quest !== 'undefined' && !Quest.isDone(item.lockOn));
+    // 检查解锁条件（如果设置了lockOn，则必须完成对应任务才能解锁；调试模式下忽略）
+    const locked = !dbg && (item.lockOn && typeof Quest !== 'undefined' && !Quest.isDone(item.lockOn));
     // 工具类（如木斧头）：单独一种交易类型 kind:'tool'，输入=金锭，输出=工具贴图
     if (item.type === 'tool') {
       // 附加材料（如木斧头 = 20 金锭 + 5 小麦）放进村民 GUI 的第二个输入槽
@@ -184,8 +186,10 @@ UI._executeTrade = function(t) {
       // addSeeds/addToInventory 内部已调用 _rebuildInvSlots，无需重复调用
       UI._renderBottomHotbar();
     } else {
-      const r = Economy._resolveSellable(t.cropId);
-      if (r.ok) Economy._applySale(t.cropId, r.count, r);
+      // 凭空卖：不校验库存（_resolveSellable 会挡住），按单价直接加钱；
+      // 不调 _applySale（它会 delete/decrement 真实库存）
+      const sdef = DATA.CROPS[t.cropId];
+      if (sdef && sdef.sellPrice > 0) Player.addMoney(sdef.sellPrice);
     }
     this._refreshTradesAfterDeal();
     return;
@@ -651,16 +655,27 @@ UI._drawShopOverlay = function() {
   Object.entries(toolParts).forEach(([key, count]) => {
     if (count > 0) pushStacks(key, count);
   });
-  // 金锭不进商店背包，只显示在快捷栏。
+  // resource（金锭/木头/木板）落主背包时 G 块也要画：单一居所 = 快捷栏没有(_hbHasResource 为假)才由 G 块画；
+  // 快捷栏有则交给 H 块，天然不双显。数量取聚合实时值；reserved/toolReserved 扣减沿用 pushStacks(645-652)。
   // 种子不进G块，只显示在快捷栏（H块）。
   // for (const item of DATA.SHOP_ITEMS) {
   //   const c = Player.seeds[item.id] || 0;
   //   if (c > 0) pushStacks(UI._seedIconKey(item.id), c);
   // }
+  // 通用落位规则：快捷栏已显示某作物 → G 块跳过（橡果 0.4.67 行为保持，其它作物按 _hbHasCrop 判断）
   for (const [cropId, count] of Object.entries(Player.inventory)) {
     if (count > 0) {
+      const inHot = cropId === 'acorn' ? Player._hbHasTool('acorn') : Player._hbHasCrop(cropId);
+      if (inHot) continue;   // 快捷栏已显示该作物，G 块跳过
       const def = DATA.CROPS[cropId];
       if (def) pushStacks(def.assetHarvest, count);
+    }
+  }
+  // resource（金锭/木头/木板）落主背包时 G 块也要画（单一居所：快捷栏没有才画，有则 H 块负责，不双显）
+  const resMap = { money: 'money', wood: 'oak_log_3d', planks: 'oak_planks_3d' };
+  for (const rid of Object.keys(resMap)) {
+    if (Player[rid] > 0 && !Player._hbHasResource(rid)) {
+      pushStacks(resMap[rid], Player[rid]);
     }
   }
   // 重建背包DOM
@@ -685,6 +700,7 @@ UI._drawShopOverlay = function() {
     if (slot.kind === 'resource' && slot.id === 'money' && moneyReserved) continue;
     let key = '';
     let count = 1;
+    let cropId = null;
     if (slot.kind === 'tool') {
       key = toolKeyMap[slot.toolId] || slot.toolId;
       count = slot.count || 1;
@@ -694,6 +710,11 @@ UI._drawShopOverlay = function() {
     } else if (slot.kind === 'resource') {
       key = slot.key || slot.id;
       count = slot.count || 1;
+    } else if (slot.kind === 'stack') {
+      // 作物堆叠进快捷栏后 H 块也要画它；卖作物拖拽源必须发 cropId（与 G 块售卖语义一致）
+      key = slot.key || slot.id;
+      count = slot.count || 1;
+      cropId = String(slot.stackId || '').indexOf('crop:') === 0 ? slot.stackId.slice(5) : null;
     }
     if (!key) continue;
     const tx = 115 + 18 * i;
@@ -726,7 +747,7 @@ UI._drawShopOverlay = function() {
     // 纯拖拽源：只发布被拖物品的 key/count，绝不改 _hotbarSlots / invSlots。
     // 金锭始终留在权威数据里，拖起时栏内仍显示（拖影正常），成交后由 _rebuildInvSlots 刷新 count。
     wrap.addEventListener('dragstart', (e) => {
-      UI._dragKey = key;
+      UI._dragKey = cropId || key;
       UI._dragCount = count || 1;
       Player._reservedHotbarIdx = i;
       if (e.dataTransfer) {

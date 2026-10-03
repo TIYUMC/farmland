@@ -103,9 +103,33 @@ const Player = {
   _hbHasSeed(seedId) {
     return !!(this._hotbarSlots && this._hotbarSlots.some(s => s && s.kind === 'seed' && s.seedId === seedId));
   },
+  /** 快捷栏是否已放置某资源身份（wood/planks/money） */
+  _hbHasResource(id) {
+    return !!(this._hotbarSlots && this._hotbarSlots.some(s => s && s.kind === 'resource' && s.id === id));
+  },
+  /** 快捷栏是否已放置某作物堆叠身份（stackId = 'crop:'+cid） */
+  _hbHasCrop(cid) {
+    return !!(this._hotbarSlots && this._hotbarSlots.some(s => s && s.kind === 'stack' && s.stackId === 'crop:' + cid));
+  },
+  /** 用户手动拖出快捷栏的物品类型记忆（惰性 new Set()，首次访问时创建；不存档。
+   *  typeKey 规范：tool:{toolId} / seed:{seedId} / resource:{id} / stackId（即 'crop:wheat'） */
+  _hbRemovedTypes: undefined,
+  /** 新物品落位：永远先快捷栏第一个空格；用户拖出过的类型 / 快捷栏已有的同类 → 不补（主背包主循环兜底） */
+  _placeNewInHotbar(typeKey, identity) {
+    if ((this._hbRemovedTypes || (this._hbRemovedTypes = new Set())).has(typeKey)) return;
+    if (identity.kind === 'tool' && this._hbHasTool(identity.toolId)) return;
+    if (identity.kind === 'seed' && this._hbHasSeed(identity.seedId)) return;
+    if (identity.kind === 'resource' && this._hbHasResource(identity.id)) return;
+    if (identity.kind === 'stack' && (this._hotbarSlots || []).some(s => s && s.kind === 'stack' && s.stackId === identity.stackId)) return;
+    if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
+    const empty = this._hotbarSlots.findIndex(s => !s);
+    if (empty >= 0) this._hotbarSlots[empty] = identity;
+    // 没有空位：什么都不做，由主背包主循环兜底（64/格分块）
+  },
   /** 将新工具自动放入快捷栏第一个空位（不覆盖已有项） */
   _ensureToolInHotbar(toolId) {
     if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
+    if ((this._hbRemovedTypes || (this._hbRemovedTypes = new Set())).has('tool:' + toolId)) return;
     if (this._hbHasTool(toolId)) return;
     const map = { hoe: { key: 'wooden_hoe', label: '锄头' }, water: { key: 'water_bucket', label: '水桶' }, axe: { key: 'wooden_axe', label: '斧头' }, acorn: { key: 'acorn', label: '橡果' } };
     const m = map[toolId] || { key: toolId, label: toolId };
@@ -119,6 +143,7 @@ const Player = {
   /** 将新种子自动放入快捷栏第一个空位（不覆盖已有项） */
   _ensureSeedInHotbar(seedId) {
     if (!this._hotbarSlots) this._hotbarSlots = this._defaultHotbarSlots();
+    if ((this._hbRemovedTypes || (this._hbRemovedTypes = new Set())).has('seed:' + seedId)) return;
     if (this._hbHasSeed(seedId)) {
       return;
     }
@@ -128,21 +153,14 @@ const Player = {
       this._pendingSeedBackfillSlot = null;
       return;
     }
-    // 优先替换金锭槽：新买的种子应该占用金锭所在的槽位，而不是跳到后面的空位
-    const moneySlotIdx = this._hotbarSlots.findIndex(s => s && s.kind === 'resource' && s.id === 'money');
-    if (moneySlotIdx >= 0) {
-      this._hotbarSlots[moneySlotIdx] = { kind: 'seed', seedId };
-      // 记录金锭被替换的位置，这样即使之后金锭槽被清除，种子也不会"回去"
-      this._pendingSeedBackfillSlot = moneySlotIdx;
-      return;
-    }
-    // 兜底：找第一个空槽
+    // 优先找第一个空槽：有空槽就填入并结束（不再找金锭槽）
     for (let i = 0; i < 9; i++) {
       if (!this._hotbarSlots[i]) {
         this._hotbarSlots[i] = { kind: 'seed', seedId };
-        break;
+        return;
       }
     }
+    // 无空槽：不找金锭槽（种子不再替换金锭占用的槽位）
   },
 
   /** 由身份描述(或 null)生成一个可渲染的槽位对象（工具/种子 count 为动态显示值） */
@@ -249,14 +267,15 @@ const Player = {
         if (cid === 'acorn') continue; // 橡果单独处理
         const c = this.inventory[cid];
         if (!c || c <= 0) continue;
+        if (this._hbHasCrop(cid)) continue; // 快捷栏已显示该作物，主背包不重画（杜绝双显）
         const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[cid] : null;
         if (!def) continue;
         pushStacks('crop:' + cid, def.assetHarvest, def.name);
       } else if (entry.type === 'resource') {
-        if (entry.id === 'wood' && this.wood > 0) pushStacks('wood', 'oak_log_3d', '木头');
-        else if (entry.id === 'planks' && this.planks > 0) pushStacks('planks', 'oak_planks_3d', '木板');
-        // 金锭不进主背包，只保留在快捷栏（由下方单独处理）
-        else if (entry.id === 'money') continue;
+        if (entry.id === 'wood' && this.wood > 0 && !this._hbHasResource('wood')) pushStacks('wood', 'oak_log_3d', '木头');
+        else if (entry.id === 'planks' && this.planks > 0 && !this._hbHasResource('planks')) pushStacks('planks', 'oak_planks_3d', '木板');
+        // 金锭快捷栏没有才落主背包（放位已挪到 addMoney，rebuild 不再强制再生快捷栏金锭）
+        else if (entry.id === 'money' && this.money > 0 && !this._hbHasResource('money')) pushStacks('money', 'money', '金锭');
       }
     }
     // 去重：快捷栏最多只保留一个金锭（历史存档/重复逻辑可能写入多个，导致"两组金锭"）
@@ -289,32 +308,8 @@ const Player = {
           this._hotbarSlots[existingMoneySlot].count = this.money;
         }
       } else {
-        // 找第一个空槽，但跳过商店拖拽保留的槽位（成交瞬间该槽本就是金锭位，已被清空）
-        let hbEmptyIdx = -1;
-        for (let k = 0; k < this._hotbarSlots.length; k++) {
-          if (!this._hotbarSlots[k]) { hbEmptyIdx = k; break; }
-        }
-        // 如果 _reservedHotbarIdx 指向的槽已空（金锭被拖走），记录待补位槽位
-        // 这样种子可以补位到金锭被拖走的位置，而不是把金锭放回原位
-        if (this._reservedHotbarIdx !== null && this._hotbarSlots[this._reservedHotbarIdx] === null) {
-          this._pendingSeedBackfillSlot = this._reservedHotbarIdx;
-          hbEmptyIdx = -1; // 不回填金锭
-        } else if (hbEmptyIdx === this._reservedHotbarIdx) {
-          // 只有当 _reservedHotbarIdx 槽还有金锭时才跳过
-          for (let k = hbEmptyIdx + 1; k < this._hotbarSlots.length; k++) {
-            if (!this._hotbarSlots[k]) { hbEmptyIdx = k; break; }
-          }
-        }
-        // 如果有待补位的槽位（等待种子填入），不填充金锭
-        // 当种子已替换金锭槽时，_pendingSeedBackfillSlot 仍为原金锭槽位
-        if (hbEmptyIdx >= 0 && this._pendingSeedBackfillSlot !== hbEmptyIdx) {
-          this._hotbarSlots[hbEmptyIdx] = { kind: 'resource', id: 'money', key: 'money', label: '金锭', count: this.money };
-        }
-        // 额外检查：如果 _pendingSeedBackfillSlot 对应的槽已被种子替换，也不回填金锭
-        if (this._pendingSeedBackfillSlot >= 0 && this._hotbarSlots[this._pendingSeedBackfillSlot] && 
-            this._hotbarSlots[this._pendingSeedBackfillSlot].kind === 'seed') {
-          hbEmptyIdx = -1;
-        }
+        // 快捷栏没有金锭槽：不再生（放位已挪到 addMoney 的 _placeNewInHotbar；
+        // 用户拖出即尊重，金锭落主背包由 resource 主循环 !_hbHasResource 兜底）
       }
     } else if (existingMoneySlot >= 0 && existingMoneySlot !== this._reservedHotbarIdx) {
       // money 用尽：清掉快捷栏里残留的金锭槽，避免显示 count=0 的幽灵金锭
@@ -327,27 +322,30 @@ const Player = {
       this._backfillSeedAfterMoneyRemoved(this._pendingSeedBackfillSlot);
     }
     // 工具：只有拥有时才放入快捷栏（开局时 ownedTools 为空，由 _grantItem 添加工具后触发重建）
+    // 用户手动拖出过该工具（_hbRemovedTypes）→ 尊重，落主背包，不再回补快捷栏
     for (const t of ['hoe', 'water']) {
-      if (!this.ownsTool(t)) continue; // 未获得该工具时不加入
+      if (!this.ownsTool(t)) continue;
       if (this._hbHasTool(t)) continue;
-      const empty = this._hotbarSlots.findIndex(s => !s);
-      if (empty >= 0) {
-        this._hotbarSlots[empty] = { kind: 'tool', toolId: t };
-      } else {
+      if ((this._hbRemovedTypes || new Set()).has('tool:' + t)) {
+        // 用户手动拖出过该工具：尊重，落主背包（main），不再回补快捷栏
         main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: 1 });
+        continue;
       }
+      const empty = this._hotbarSlots.findIndex(s => !s);
+      if (empty >= 0) this._hotbarSlots[empty] = { kind: 'tool', toolId: t };
+      else main.push({ kind: 'tool', toolId: t, key: toolMap[t].key, label: toolMap[t].label, count: 1 });
     }
-    if (this.ownsTool('axe')) {
-      if (!this._hbHasTool('axe')) {
-        const empty = this._hotbarSlots.findIndex(s => !s);
-        if (empty >= 0) {
-          this._hotbarSlots[empty] = { kind: 'tool', toolId: 'axe' };
-        } else {
-          main.push({ kind: 'tool', toolId: 'axe', key: toolMap['axe'].key, label: toolMap['axe'].label, count: 1 });
-        }
-      }
+    if (this.ownsTool('axe') && !this._hbHasTool('axe') &&
+        !(this._hbRemovedTypes || new Set()).has('tool:axe')) {
+      const empty = this._hotbarSlots.findIndex(s => !s);
+      if (empty >= 0) this._hotbarSlots[empty] = { kind: 'tool', toolId: 'axe' };
+      else main.push({ kind: 'tool', toolId: 'axe', key: toolMap['axe'].key, label: toolMap['axe'].label, count: 1 });
+    } else if (this.ownsTool('axe') && (this._hbRemovedTypes || new Set()).has('tool:axe') && !this._hbHasTool('axe')) {
+      main.push({ kind: 'tool', toolId: 'axe', key: toolMap['axe'].key, label: toolMap['axe'].label, count: 1 });
     }
     if (this.acorns > 0 && !this._hbHasTool('acorn')) {
+      // 单一居所守卫：放位已挪到 addAcorns（_placeNewInHotbar），
+      // rebuild 只负责「快捷栏没有就落主背包」，不再自动回补快捷栏（用户拖出即尊重）
       main.push({ kind: 'tool', toolId: 'acorn', key: toolMap['acorn'].key, label: toolMap['acorn'].label, count: this.acorns });
     }
     // 补位前置：清掉「数量为 0 / 已删除」的种子占位残留。useSeed 种光某种子时只删了
@@ -396,6 +394,19 @@ const Player = {
     for (let i = 0; i < 9; i++) inv[27 + i] = this._slotFromIdentity(this._hotbarSlots[i]);
     // 主栏填入背包
     for (let k = 0; k < main.length && k < 27; k++) inv[k] = main[k];
+    // 橡果去重 post-pass：36 格 acorn 格 >1 时只留一份（快捷栏有 → 留快捷栏、清主栏；
+    // 快捷栏无 → 留主栏、清快捷栏），杜绝双显。数量权威仍是 Player.acorns，这里只置视图。
+    const acornIdx = [];
+    for (let i = 0; i < 36; i++) if (inv[i] && inv[i].kind === 'tool' && inv[i].toolId === 'acorn') acornIdx.push(i);
+    if (acornIdx.length > 1) {
+      const keepHot = acornIdx.some(i => i >= 27);
+      const keep = acornIdx.find(x => keepHot ? (x >= 27) : (x < 27));
+      for (const i of acornIdx) {
+        if (i === keep) continue;
+        inv[i] = null;
+        if (i >= 27) this._hotbarSlots[i - 27] = null;
+      }
+    }
     this.invSlots = inv;
   },
 
@@ -457,6 +468,8 @@ const Player = {
     if (!this._allOrder.some(e => e.type === 'resource' && e.id === 'money')) {
       this._allOrder.push({ type: 'resource', id: 'money' });
     }
+    // 新物品永远先快捷栏：金锭首次进快捷栏第一个空格（拖出即尊重，rebuild 不再生）
+    this._placeNewInHotbar('resource:money', { kind: 'resource', id: 'money', key: 'money', label: '金锭' });
     // 重新构建背包缓存，使金锭立即显示
     this._rebuildInvSlots();
     // 立即刷新底部快捷栏显示（金锭数量变化需要实时可见）
@@ -493,11 +506,13 @@ const Player = {
     if (!this._allOrder.some(e => e.type === 'resource' && e.id === 'wood')) {
       this._allOrder.push({ type: 'resource', id: 'wood' });
     }
+    this._placeNewInHotbar('resource:wood', { kind: 'resource', id: 'wood', key: 'wood', label: '木头' });
   },
 
   /** 加橡果（砍树掉落） */
   addAcorns(amount) {
     this.acorns += (amount || 0);
+    this._placeNewInHotbar('tool:acorn', { kind: 'tool', toolId: 'acorn' });
     // 新增橡果时同步刷新背包布局，确保快捷栏/主栏可见
     if (typeof UI !== 'undefined' && UI._renderBottomHotbar) {
       this._rebuildInvSlots();
@@ -511,6 +526,7 @@ const Player = {
     if (!this._allOrder.some(e => e.type === 'resource' && e.id === 'planks')) {
       this._allOrder.push({ type: 'resource', id: 'planks' });
     }
+    this._placeNewInHotbar('resource:planks', { kind: 'resource', id: 'planks', key: 'planks', label: '木板' });
   },
 
   /** 是否还有橡果可种 */
@@ -541,6 +557,14 @@ const Player = {
     this.inventory[cropId] = (this.inventory[cropId] || 0) + count;
     if (!this._allOrder.some(e => e.type === 'crop' && e.id === cropId)) {
       this._allOrder.push({ type: 'crop', id: cropId });
+    }
+    // 新物品永远先快捷栏：收获作物首次进快捷栏第一个空格（橡果走 tool 通道，不入此处）
+    if (cropId !== 'acorn') {
+      const def = (typeof DATA !== 'undefined' && DATA.CROPS) ? DATA.CROPS[cropId] : null;
+      this._placeNewInHotbar('crop:' + cropId, {
+        kind: 'stack', stackId: 'crop:' + cropId,
+        key: def ? def.assetHarvest : (cropId || ''), label: def ? def.name : cropId
+      });
     }
     // 重新构建背包缓存并刷新显示
     this._rebuildInvSlots();

@@ -31,7 +31,7 @@
     <div id="title-screen" class="overlay-visible">
 
       <canvas id="title-particles"></canvas>
-      <div id='title-bg' style='background-image:url(assets/圆石背景.png)'></div>
+      <div id='title-bg' style='background-image:url(圆石背景.png)'></div>
       <div id="title-content" style="z-index:10">
 
         <h1 id="title-logo">Terraform</h1>
@@ -44,7 +44,7 @@
 
         </div>
 
-        <div id="title-version">0.4.3</div>
+        <div id="title-version">0.5.0</div>
 
       </div>
 
@@ -72,19 +72,43 @@
 
         <div class="tool-btn" id="btn-inv-debug"><div class="tool-icon"></div><div class="tool-name">调试</div></div>
 
-        <select id="season-jump">
+        <div class="debug-selects">
 
-          <option value="">跳季…</option>
+          <select id="season-jump">
 
-          <option value="0">春（第1天）</option>
+            <option value="">跳季…</option>
 
-          <option value="1">夏（第1天）</option>
+            <option value="0">春（第1天）</option>
 
-          <option value="2">秋（第1天）</option>
+            <option value="1">夏（第1天）</option>
 
-          <option value="3">冬（第1天）</option>
+            <option value="2">秋（第1天）</option>
 
-        </select>
+            <option value="3">冬（第1天）</option>
+
+          </select>
+
+          <select id="time-scale">
+
+            <option value="0.5">0.5x</option>
+
+            <option value="1" selected>1.0x</option>
+
+            <option value="3">3x</option>
+
+          </select>
+
+          <select id="weather-jump">
+
+            <option value="">天气…</option>
+
+            <option value="clear">晴</option>
+
+            <option value="rain">雨（冬季=雪）</option>
+
+          </select>
+
+        </div>
 
       </div>
 
@@ -231,47 +255,47 @@
 
 
 
-  <script src="js/assets.js?v=0.4.3"></script>
+  <script src="js/assets.js?v=0.5.0"></script>
 
-  <script src="js/data.js?v=0.4.3"></script>
+  <script src="js/data.js?v=0.5.0"></script>
 
-  <script src="js/engine.js?v=0.4.3"></script>
+  <script src="js/engine.js?v=0.5.0"></script>
 
-  <script src="js/farm.js?v=0.4.3"></script>
+  <script src="js/farm.js?v=0.5.0"></script>
 
-  <script src="js/player.js?v=0.4.3"></script>
+  <script src="js/player.js?v=0.5.0"></script>
 
-  <script src="js/economy.js?v=0.4.3"></script>
+  <script src="js/economy.js?v=0.5.0"></script>
 
-  <script src="js/juice.js?v=0.4.3"></script>
+  <script src="js/juice.js?v=0.5.0"></script>
 
-  <script src="js/quest.js?v=0.4.3"></script>
+  <script src="js/quest.js?v=0.5.0"></script>
 
-  <script src="js/ui.js?v=0.4.3"></script>
+  <script src="js/ui.js?v=0.5.0"></script>
 
-  <script src="js/ui-effects.js?v=0.4.3"></script>
+  <script src="js/ui-effects.js?v=0.5.0"></script>
 
-  <script src="js/ui-snow.js?v=0.4.3"></script>
+  <script src="js/ui-snow.js?v=0.5.0"></script>
 
-  <script src="js/ui-autumn.js?v=0.4.3"></script>
+  <script src="js/ui-autumn.js?v=0.5.0"></script>
 
-  <script src="js/ui-weather.js?v=0.4.3"></script>
+  <script src="js/ui-weather.js?v=0.5.0"></script>
 
-  <script src="js/ui-cache.js?v=0.4.3"></script>
+  <script src="js/ui-cache.js?v=0.5.0"></script>
 
-  <script src="js/ui-scene.js?v=0.4.3"></script>
+  <script src="js/ui-scene.js?v=0.5.0"></script>
 
-  <script src="js/ui-quest.js?v=0.4.3"></script>
+  <script src="js/ui-quest.js?v=0.5.0"></script>
 
-  <script src="js/inventory.js?v=0.4.3"></script>
+  <script src="js/inventory.js?v=0.5.0"></script>
 
-  <script src="js/shop.js?v=0.4.3"></script>
+  <script src="js/shop.js?v=0.5.0"></script>
 
-  <script src="js/treefarm.js?v=0.4.3"></script>
+  <script src="js/treefarm.js?v=0.5.0"></script>
 
-  <script src="js/savegame.js?v=0.4.3"></script>
+  <script src="js/savegame.js?v=0.5.0"></script>
 
-  <script src="js/main.js?v=0.4.3"></script>
+  <script src="js/main.js?v=0.5.0"></script>
 
 </body>
 
