@@ -53,6 +53,24 @@
       UI.showFullSummary();
     };
 
+    // 关页面前静默自动存盘（第三条存档路，与午夜结算/手动存档并存）：
+    // 只挂一次，开局与继续共用——_startNewGame/_continueGame 会重建游戏状态，
+    // 在两段按钮绑定前注册可保证 handler 读到的始终是最新状态。
+    // iOS Safari 关页走 pagehide 不走 beforeunload，两个事件挂同一 handler。
+    // 防覆写闸：标题界面（未进游戏）关页不存盘，避免用当天初始态覆写已有存档。
+    // 判据说明：全仓无 Engine.stop() 调用点（引擎从顶层 init 起恒 running），
+    // 故不用 Engine.running，改用标题 DOM 的 overlay-visible 类（_showTitle 置、_hideTitle 撤）。
+    // 刻意不 preventDefault/returnValue：静默存完即走，不弹浏览器原生「离开站点？」框。
+    const _saveOnHide = function () {
+      if (typeof SaveGame === 'undefined' || !SaveGame.save) return;
+      var ts = document.getElementById('title-screen');
+      var onTitle = !!ts && ts.classList && ts.classList.contains('overlay-visible');
+      if (onTitle) return;   // 标题界面：未进游戏，不覆写存档
+      SaveGame.save();
+    };
+    window.addEventListener('pagehide', _saveOnHide);
+    window.addEventListener('beforeunload', _saveOnHide);
+
     // 开始首日
     Engine.start();
     UI.render();
@@ -115,6 +133,24 @@
       if (UI._weatherPhase === v) return;           // 同状态：不重置倒计时、不重复浇灌
       UI._setWeatherPhase(v);
       UI.showStatus(v === 'rain' ? '天气：雨（冬季显示为雪）' : '天气：晴', 1000);
+    });
+    // 调试：跳时间下拉（早上 6:00 / 中午 12:00 / 傍晚 18:00 / 晚上 21:00）。
+    // 占位项「时间…」无效值忽略；已停在目标整点则早退不闪提示；直接改 hour/minute 真值即时生效
+    // （tick 是 setTimeout 链、每步读当前值继续走，无需重启；与 timeScale 完全正交，互不干扰）。
+    const timeJump = document.getElementById('time-jump');
+    if (timeJump) timeJump.addEventListener('change', () => {
+      const v = parseInt(timeJump.value, 10);
+      if (v !== 6 && v !== 12 && v !== 18 && v !== 21) return;   // 占位/非法值，忽略
+      if (Engine.hour === v && Engine.minute === 0) return;      // 同状态早退，不重复跳
+      Engine.hour = v;
+      Engine.minute = 0;
+      if (typeof UI !== 'undefined') {
+        UI.markFarmDirty();
+        if (typeof UI._tickSnow === 'function') UI._tickSnow();
+        if (typeof UI._updateHUD === 'function') UI._updateHUD();
+      }
+      const names = { 6: '早上（6:00）', 12: '中午（12:00）', 18: '傍晚（18:00）', 21: '晚上（21:00）' };
+      if (typeof UI !== 'undefined' && UI.showStatus) UI.showStatus('时间：' + names[v], 1000);
     });
     // 任务书入口：底部工具栏紫色书按钮（商店右边），点开/关任务书
     const questBtn = document.getElementById('btn-quest');

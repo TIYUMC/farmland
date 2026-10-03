@@ -494,7 +494,7 @@ UI._drawShopOverlay = function() {
       if (lockImg) {
         ctx.imageSmoothingEnabled = false;
         const lockAR=lockImg.naturalWidth/lockImg.naturalHeight;
-        const lh=16*S; const lw=lh*lockAR;
+        const lh=12*S; const lw=lh*lockAR;
         ctx.drawImage(lockImg, 0, 0, lockImg.naturalWidth, lockImg.naturalHeight,
           rx + rw - lw - 2*S, ryc + (rh-lh)/2, lw, lh);
       }
@@ -661,8 +661,7 @@ UI._drawShopOverlay = function() {
   // for (const item of DATA.SHOP_ITEMS) {
   //   const c = Player.seeds[item.id] || 0;
   //   if (c > 0) pushStacks(UI._seedIconKey(item.id), c);
-  // }
-  // 通用落位规则：快捷栏已显示某作物 → G 块跳过（橡果 0.4.67 行为保持，其它作物按 _hbHasCrop 判断）
+  // }  // 通用落位规则：快捷栏已显示某作物 → G 块跳过（橡果 0.4.67 行为保持，其它作物按 _hbHasCrop 判断）
   for (const [cropId, count] of Object.entries(Player.inventory)) {
     if (count > 0) {
       const inHot = cropId === 'acorn' ? Player._hbHasTool('acorn') : Player._hbHasCrop(cropId);
@@ -676,6 +675,25 @@ UI._drawShopOverlay = function() {
   for (const rid of Object.keys(resMap)) {
     if (Player[rid] > 0 && !Player._hbHasResource(rid)) {
       pushStacks(resMap[rid], Player[rid]);
+    }
+  }
+  // 工具（锄头/水桶/斧头）落主背包时 G 块也要画：单一居所 = 快捷栏没有(_hbHasTool 为假)才由 G 块画，
+  // 有则 H 块负责，不双显。工具 count 恒为 1（不可堆叠），直接 push 单格。
+  {
+    const toolKeyMap = { hoe: 'wooden_hoe', water: 'water_bucket', axe: 'wooden_axe' };
+    for (const tid of Object.keys(toolKeyMap)) {
+      if (Player.ownsTool(tid) && !Player._hbHasTool(tid)) {
+        items.push({ key: toolKeyMap[tid], count: 1 });
+      }
+    }
+  }
+  // 种子落主背包（快捷栏满溢出）时 G 块画：单一居所 = 快捷栏没有(_hbHasSeed 为假)才画。
+  // 注意橡果走 Player.inventory 循环已有 inHot skip 保护，这里跳过 acorn 防双画。
+  {
+    const seedIconMap = { wheat: 'wheat_seeds', potato: 'potato', strawberry: 'mc_sweet_berries' };
+    for (const sid of Object.keys(Player.seeds || {})) {
+      if (sid === 'acorn' || !(Player.seeds[sid] > 0) || Player._hbHasSeed(sid)) continue;
+      pushStacks(seedIconMap[sid] || 'wheat_seeds', Player.seeds[sid]);
     }
   }
   // 重建背包DOM

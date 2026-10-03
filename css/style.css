@@ -233,9 +233,10 @@ body {
 .debug-cluster {
   display: flex; flex-direction: row; align-items: center; gap: 6px;
 }
-/* 调试下拉窄列（3 个 select 竖叠），与调试按钮并排、按钮垂直居中对整列 */
+/* 调试下拉 2×2 网格（4 个 select 两列：跳季+倍速 / 天气+时间），与调试按钮并排、按钮垂直居中对整块。
+   列宽用 auto 不用 1fr：select 有 max-width:92px，1fr 会把格子撑宽、列内留白不均；auto 按内容宽度自排。 */
 .debug-selects {
-  display: flex; flex-direction: column; gap: 3px;
+  display: grid; grid-template-columns: repeat(2, auto); gap: 3px;
 }
 /* 调试 cluster 内下拉统一外观（跳季/倍速/天气三框共用；原 #season-jump 与 #time-scale 两份重复块已合并，顺带给 #weather-jump 补上） */
 .debug-cluster select {

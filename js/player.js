@@ -363,8 +363,9 @@ const Player = {
     for (const entry of (this._allOrder || [])) {
       if (entry.type !== 'seed') continue;
       const sid = entry.id;
-      // 情况A：种子还没在快捷栏，正常填入
-      if ((this.seeds[sid] || 0) > 0 && !this._hbHasSeed(sid)) {
+      // 情况A：种子还没在快捷栏，正常填入（用户手动拖出过的种子尊重不再拉回，_hbRemovedTypes 守卫）
+      if ((this.seeds[sid] || 0) > 0 && !this._hbHasSeed(sid) &&
+          !(this._hbRemovedTypes || new Set()).has('seed:' + sid)) {
         let k = this._hotbarSlots.findIndex(s => !s);
         // 跳过拖拽保留的槽位，但如果该槽已被清空（null），则允许填入
         while (k >= 0 && k === this._reservedHotbarIdx && this._hotbarSlots[k] !== null) {

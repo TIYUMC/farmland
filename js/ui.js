@@ -861,8 +861,8 @@ const UI = {
 
     if (this._grassShakes && this._grassShakes.length) this._drawGrassShakes(ctx, dt);
 
-    // 草白描边实时层：整片合并外轮廓（无相邻双白线交叉），alpha 随鼠标到最近草质心距离 10%→100% 渐变（草身不变）
-    this._drawGrassOutline(ctx);
+    // 草白描边实时层：画在夜间蒙层之上（见下方 _drawNightOverlay 后的调用），
+    // 避免夜晚整幅夜色把白描边压暗、看不出轮廓。
 
     // 动态层：未浇水作物的呼吸高亮
     if (this.scene === 'farm') {
@@ -951,6 +951,10 @@ const UI = {
     // 昼夜蒙层：整幅画面最顶层（含雨/雪），使夜晚明显区别于白天
 
     this._drawNightOverlay(ctx);
+
+    // 草白描边实时层：整片合并外轮廓（无相邻双白线交叉），alpha 随鼠标到最近草质心距离 10%→100% 渐变（草身不变）。
+    // 画在夜间蒙层之上：黑夜时白描边不再被夜色压暗，轮廓清晰（用户反馈「夜晚太暗」）。
+    this._drawGrassOutline(ctx);
 
 
 
