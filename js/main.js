@@ -158,7 +158,11 @@
 
     // 标题界面按钮绑定（0.5.9：「继续游戏」按钮已改为「存档选择下拉 + 进入游戏」）
     const btnNewGame = document.getElementById('btn-new-game');
-    if (btnNewGame) btnNewGame.addEventListener('click', _startNewGame);
+    // 0.5.52：裸绑定 `_startNewGame` 会被 addEventListener 把 MouseEvent 当第 1 参传入，
+    // requestedSlot=事件对象（truthy）→ target=事件 → 落槽「空槽优先/三槽满 confirm」整段被跳过、
+    // SaveGame.currentSlot 被置成事件对象（脏值）→ 后续所有无参 save() 走 SLOT_KEYS[事件]=undefined 静默失败。
+    // 改箭头闭包不传参：requestedSlot=undefined → target=null → 空槽优先逻辑正常跑。
+    if (btnNewGame) btnNewGame.addEventListener('click', function () { _startNewGame(); });
     // 存档选择：0.5.24 自定义下拉（原生 <option> 弹层由浏览器自绘、无法设背景，改「按钮 + 浮层列表」）。
     // 选中即进——有档槽 _continueGame(N)，空槽 confirm 后 _startNewGame(N)（0.5.22 口径，逻辑从原 change 监听体搬进面板项 click）。
     // #save-slot 原生 select 隐藏保留（作 value 兜底链路：面板项点选后写回 value，不删）。
