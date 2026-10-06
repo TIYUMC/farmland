@@ -221,6 +221,7 @@ const Farm = {
     if (!cropDef) return 'invalid_crop';
 
     cell.crop = cropId;
+    if (typeof UI !== 'undefined' && UI._grassDataRev !== undefined) UI._grassDataRev = (UI._grassDataRev || 0) + 1;   // §1.4：作物描边缓存失效（种/收触发 A 重烘）
     // B3：不再清空 watered，保留播种前已做的预浇水（空耕地可先浇水再种）
     cell.grownDays = 0;
     cell.regrowCount = 0;
@@ -330,6 +331,7 @@ const Farm = {
     }
 
     if (typeof Quest !== 'undefined') Quest.trigger('harvest', count); // 任务书：丰收季
+    if (typeof UI !== 'undefined' && UI._grassDataRev !== undefined) UI._grassDataRev = (UI._grassDataRev || 0) + 1;   // §1.4：作物描边缓存失效（种/收触发 A 重烘）
     return { ok: true, cropId: cell.crop, count, sellPrice: cropDef.sellPrice };
   },
 
@@ -481,19 +483,20 @@ function grassStep(self) {
       }
       if (prev[r][c] === 1) {
         const neighbor = hasNeighborGrass(r, c) ? decayNear : decayAlone;
-        const decay = decayBase * neighbor;
+        const decay = Math.min(1, decayBase * neighbor); // B6：树场季节表 >1，钳回概率域（当前值 <1 为 no-op，防表调大埋雷）
         if (Math.random() < decay) self.grass[r][c] = 2; // 仍是草(黄)，未退化成裸土（本步仍按乘法，未改）
       } else if (prev[r][c] === 0) {
         if (self.bare[r][c]) {
-          // 裸土 → 草方块：有草邻居时生长慢(竞争抑制)，孤立时生长快（参考第497行同类写法）
+          // 裸土 → 草方块：有草邻居时生长慢(竞争抑制)，孤立时生长快（参考上方 recoverNeighbor 同类写法）
           const recoverNeighbor = hasNeighborGrassOrBlock(r, c) ? self.grassGrowNeighborMult : self.grassGrowAloneMult;
           if (Math.random() < growBase * recoverNeighbor) {
             self.bare[r][c] = false; // 土 → 草方块（按长草概率恢复底纹，grass 仍为 0）
           }
           continue;
         }
-        const nb = hasNeighborGrassOrBlock(r, c) ? decayAlone : decayNear;
-        const toBareDecay = decayToBareBase * nb;
+        // B1 修复：与绿→黄/草方块→绿草口径对齐——「有邻居取小值」(decayNear 耐活)；旧版写反成孤立才耐活
+        const nb = hasNeighborGrassOrBlock(r, c) ? decayNear : decayAlone;
+        const toBareDecay = Math.min(1, decayToBareBase * nb); // B6：树场表(秋1.60/冬2.00)×系数可能越界，钳回 [0,1]（farm 现值 <1，钳制为 no-op）
         if (Math.random() < toBareDecay) {
           self.bare[r][c] = true; // 草方块 → 土（草方块退化成裸土，仅此路径能转土色；grass 仍为 0）
           continue;
@@ -570,7 +573,7 @@ function flowerStep(self) {
         if (self.grid[r] && self.grid[r][c] !== null) continue;
         if (self.dirt[r] && self.dirt[r][c]) continue;
         if (self.bare[r] && self.bare[r][c]) continue;
-        if (self.flowers[r][c] > 0) { flowerCount++; capacity++; continue; } // 花格 grass 恒为 0，须先判
+        if (self.flowers[r] && self.flowers[r][c] > 0) { flowerCount++; capacity++; continue; } // 花格 grass 恒为 0，须先判（B3：旧档无 flowers 字段时判行存在再访问）
         if (self.grass[r][c] > 0) continue;
         capacity++;
       }
@@ -586,7 +589,7 @@ function flowerStep(self) {
         if (dr === 0 && dc === 0) continue;
         const nr = r + dr, nc = c + dc;
         if (nr < 0 || nr >= self.ROWS || nc < 0 || nc >= self.COLS) continue;
-        const s = self.flowers[nr][nc];
+        const s = self.flowers[nr] ? (self.flowers[nr][nc] || 0) : 0; // B3：旧档无 flowers 时防 undefined
         if (s > 0 && Math.random() < 1 / ++seen) picked = s;
       }
     }
@@ -599,7 +602,7 @@ function flowerStep(self) {
       if (self.dirt[r] && self.dirt[r][c]) continue;
       if (self.bare[r] && self.bare[r][c]) continue;
       if (self.grass[r][c] > 0) continue; // 与草互斥：草格不长花
-      if (self.flowers[r][c] > 0) {
+      if (self.flowers[r] && self.flowers[r][c] > 0) {
         // 已是花 → 按当前季节 grass decay 概率枯萎（枯萎不受密度上限影响）
         if (decayBase > 0 && Math.random() < decayBase) { self.flowers[r][c] = 0; flowerCount--; }
       } else if (spawnBase > 0 && flowerCount < maxFlowers) {

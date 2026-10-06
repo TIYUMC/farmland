@@ -458,6 +458,10 @@ const UI = {
 
     this.canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); });
 
+    // 切场导航箭头 DOM 按钮（0.5.11）：锁定 → nudge；未锁定 → toggleScene（T 键/调试关闭强退仍走 toggleScene，内部已含 _updateNavBtn）
+    const navBtn = document.getElementById('nav-scene-btn');
+    if (navBtn) navBtn.addEventListener('click', () => this._navBtnClick());
+
     // 手机无鼠标：用手指当「靠近点」驱动草描边距离渐变（_eventToCanvas 已取 e.touches[0]）
     this.canvas.addEventListener('touchmove', (e) => this._onMouseMove(e), { passive: false });
     this.canvas.addEventListener('touchend', () => {
@@ -542,7 +546,7 @@ const UI = {
     this._lastFrame = 0;
     this._isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
 
-    this._navHoverCur = 1;
+    this._navBtnLast = null;                                 // 0.5.11：DOM 导航按钮幂等标记（{scene, locked, left}）
 
 
 
@@ -569,6 +573,9 @@ const UI = {
     this._shakeSnowBaseCache = null;                          // 积雪时的草格底缓存：雪覆盖时草格底含雪，无雪时用 _grassBaseCache
 
     this._fallingLeaves = [];                                // 秋日落叶数组（仅秋季生成）
+
+    this._windStreaks = [];                                  // 大风风丝数组（仅 phase==='wind' 时填充）
+    this._windFadeLeft = 0;      // 风丝散场淡出倒数（0.5.40，秒）
 
     this._litterGrid = null;                                // 秋日地面落叶堆：每格0~4份(每份1/4格)二维计数 grid；null=未初始化/已清空
 
@@ -674,6 +681,10 @@ const UI = {
     // 注意：game-area 有 padding: 16px，需要扣除两侧 padding
     const GAP = 32; // padding 总宽度 (16px * 2)
     const availW = (gameArea.clientWidth || window.innerWidth) - GAP;
+    // 0.5.13：切场箭头 DOM 按钮占画布一侧，availW 里直接扣掉按钮位，画布算小一点、两侧永远放得下
+    // （50=44px 按钮+6px 间隙 / 62=56px+6px；按钮同一时刻只占一侧，扣一次就够。窄屏 cellSize 自动变小，4px 兜底变纯防御）
+    const navReserve = Math.min(window.innerWidth, window.innerHeight) <= 560 ? 50 : 62;
+    const availW2 = availW - navReserve;
     let availH = gameArea.clientHeight - GAP;
     if (!availH || availH < 50) {
       // 布局尚未稳定时的兜底（toolbar 和 hotbar 分开，各减一次）
@@ -687,7 +698,7 @@ const UI = {
 
     const idealSizeByH = Math.floor(availH / DATA.FARM.ROWS);
 
-    const idealSizeByW = Math.floor(availW / DATA.FARM.COLS);
+    const idealSizeByW = Math.floor(availW2 / DATA.FARM.COLS);   // 0.5.13：用扣掉按钮位的 availW2（原 availW）
 
     // 小屏(手机)放宽下限：桌面 32 的保底会在手机上反向把画布撑出容器 —— 这正是「显示不全」的根因。
     // 例：手机横屏 availH≈250 → ideal=25，若被 max(...,32) 抬成 32，画布高 320 > 250 直接溢出。
@@ -855,7 +866,7 @@ const UI = {
 
 
 
-    // 草丛颤动：在静态层之上、雨雾蒙层/选中框/雨丝之下绘制，
+    // 草丛颤动：在静态层之上、雨蒙层/选中框/雨丝之下绘制，
 
     // 这样重画的草继承雨天的朦胧感，且不会盖住选中框（图层顺序修正）。
 
@@ -914,9 +925,6 @@ const UI = {
 
 
 
-    // 场景导航箭头（树场← / 农场→），画在最上层、两个场景都显示
-
-    this._drawNavArrow(ctx, dt);
 
 
 
@@ -940,6 +948,10 @@ const UI = {
 
     this._drawLeaves(ctx, dt);
 
+    // 大风（纯视觉阵风，0.5.10）：画在落叶之后、雨之前；与雨互斥（isRaining 假时 _updateWind 清场），
+    // 仍盖在夜色蒙层（953 行）之下。切场过渡帧（778）不画风，跟落叶处理一致。
+    if (this._weatherPhase === 'wind' || (this._windStreaks && this._windStreaks.length)) { this._updateWind(dt, this.canvas.width, this.canvas.height); this._drawWind(ctx, dt); }
+
     // 视觉下雨（纯画面，R 键可手动切换）：画在最上层，覆盖整个世界与粒子
 
     if (this.isRaining) this._drawRain(ctx, dt);
@@ -955,6 +967,10 @@ const UI = {
     // 草白描边实时层：整片合并外轮廓（无相邻双白线交叉），alpha 随鼠标到最近草质心距离 10%→100% 渐变（草身不变）。
     // 画在夜间蒙层之上：黑夜时白描边不再被夜色压暗，轮廓清晰（用户反馈「夜晚太暗」）。
     this._drawGrassOutline(ctx);
+
+    // DOM 导航按钮位置/贴图/锁定态刷新（0.5.11）：覆盖 resize/Quest完成等一切状态变化的兜底路径
+
+    this._updateNavBtn();
 
 
 
@@ -975,6 +991,7 @@ const UI = {
     if (this._floaters)  { this._floaters.update(dt);  this._floaters.draw(ctx); }
     if (this._shake) this._shake.update(dt);
   },
+
 
 
 
@@ -1088,7 +1105,7 @@ const UI = {
 
     if (!this._snowFlakes) {
 
-      const n = Math.max(50, Math.round((W * H) / 6000));
+      const n = Math.max(50, Math.round((W * H) / 6000)) * (this._snowLevel === 2 ? 3 : 1); // 首帧赶上暴雪段直接顶到位（0.5.16 在飘量 ×3）
 
       this._snowFlakes = [];
 
@@ -1096,7 +1113,7 @@ const UI = {
 
     }
 
-    ctx.fillStyle = 'rgba(205,215,235,0.15)';
+    ctx.fillStyle = 'rgba(205,215,235,' + (this._snowLevel === 2 ? '0.34' : '0.15') + ')';   // 暴雪天色发灰发闷（0.5.16：0.26→0.34，与暴雨 0.45 同档感）
 
     ctx.fillRect(-8, -8, W + 16, H + 16);
 
@@ -1148,7 +1165,7 @@ const UI = {
 
     for (const f of this._snowFlakes) { if (f.stopped) stopped++; else moving++; }
 
-    const TARGET_MOVING = Math.max(50, Math.round((W * H) / 6000));
+    const TARGET_MOVING = Math.max(50, Math.round((W * H) / 6000)) * (this._snowLevel === 2 ? 3 : 1); // 暴雪在飘量 ×3（0.5.16；降级不裁回空中，停驻雪花按 age 自然淡出变稀）
 
     const MAX_STOPPED = 600;
 
@@ -1265,7 +1282,7 @@ const UI = {
 
   _newSnow(W, H, initial) {
 
-    const size = 15 + Math.random() * 30;       // 飘雪粒子大小 15~45（调大下限和范围，更明显）
+    const size = Math.round((15 + Math.random() * 30) * (this._snowLevel === 2 ? 1.3 : 1)); // 飘雪粒子大小 15~45（暴雪 ×1.3 更大更密实，0.5.15）
 
     const landX = Math.random() * W;            // 固定随机落点（列方向，全屏任意格）
 
@@ -1279,15 +1296,15 @@ const UI = {
 
       y: initial ? Math.random() * landY : -12 - Math.random() * H,   // 从屏幕上方飘下，飘到 landY 停下
 
-      vy: 20 + Math.random() * 28,
+      vy: Math.round((20 + Math.random() * 28) * (this._snowLevel === 2 ? 2.5 : 1)), // 下落速度（暴雪 ×2.5「砸」下来，0.5.16 观感加强）
 
       size,
 
       phase: Math.random() * Math.PI * 2,
 
-      swayAmp: 7 + Math.random() * 16,
+      swayAmp: Math.round((7 + Math.random() * 16) * (this._snowLevel === 2 ? 2 : 1)), // 摆幅（暴雪 ×2 横甩风感，0.5.16）
 
-      swaySpeed: 0.7 + Math.random() * 1.1,
+      swaySpeed: 0.7 + Math.random() * 1.1 + (this._snowLevel === 2 ? 0.8 : 0), // 摆动更快（暴雪 +0.8 风大，0.5.16）
 
       spin: (Math.random() - 0.5) * 0.7,
 
@@ -1317,7 +1334,7 @@ const UI = {
 
     // 现在雪由 _accumulateSnow 后台累积（与空中飘雪无关）；飘落雪花只做纯视觉，不生成积雪。
 
-    if (!this._snowGround) { this._snowGround = []; this._vegSnowTotal = -1; }
+    if (!this._snowGround) { this._snowGround = []; this._vegSnowTotal = -1; this._vegSnowSig = ''; }
 
     this._snowTotal = this._snowGround.length;
 
@@ -1453,7 +1470,7 @@ const UI = {
 
     if (this._snowCtx) this._snowCtx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
 
-    if (had) { this._buildVegCache(); this._vegSnowTotal = 0; }
+    if (had) { this._buildVegCache(); this._vegSnowTotal = 0; this._vegSnowSig = ''; }
 
   },
 
@@ -1661,15 +1678,17 @@ const UI = {
 
       this._redrawSnowAll();
 
-      if (this._snowTotal !== this._vegSnowTotal) { this._buildVegCache(); this._vegSnowTotal = this._snowTotal; }  // 覆盖率变→刷新草基部截断
+      // 0.5.50：veg 层失效改按「雪签名」（格+量化桶）比较，替代旧「雪花数量」；_snowTotal 保留（他处仍用），仅新增 sig 比较
+      const sig = this._snowSig();
+      if (sig !== this._vegSnowSig) { this._buildVegCache(); this._vegSnowSig = sig; }  // 雪签名变→刷新草基部截断
 
       this._shakeSnowBaseCache = null;                         // 雪变化→有雪底缓存失效（懒重建）
 
-    } else if (this._snowCanvas && this._vegSnowTotal !== 0) {
+    } else if (this._snowCanvas && this._vegSnowSig) {
 
       this._snowCtx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
 
-      this._buildVegCache(); this._vegSnowTotal = 0;               // 雪清空→草基部解埋
+      this._buildVegCache(); this._vegSnowSig = '';               // 雪清空→草基部解埋（sig 归空串，veg 重建无截断）
 
       this._shakeSnowBaseCache = null;
 
@@ -1753,7 +1772,7 @@ const UI = {
 
     if (this._ripples.length >= 60) return;            // 上限，避免同屏过多
 
-    if (Math.random() > 0.6) return;                  // 约 60% 落地才生成涟漪，错落不密集
+    if (Math.random() > (this._rainLevel === 2 ? 0.35 : 0.6)) return; // 普通雨 40% 落地生涟漪 → 暴雨 65%（0.5.15）
 
     // ── 地表判定：草丛/树 上不出涟漪 ──
 
@@ -2413,7 +2432,7 @@ const UI = {
 
       vy: 420 + Math.random() * 420,                 // 下落速度 420~840 px/s（速度差更大）
 
-      vx: -40 - Math.random() * 90,                  // 风向：左飘 -40~-130 px/s
+      vx: (-40 - Math.random() * 90) * (this._rainLevel === 2 ? 1.8 : 1), // 风向：左飘 -40~-130 px/s（暴雨 ×1.8 斜度更大，0.5.15）
 
       len,
 
@@ -2794,27 +2813,14 @@ const UI = {
 
     this._transition = { t: 0, dur: 0.36, src, dst, dir, toScene };
 
-  },
+    // 0.5.11：切场瞬间刷新 DOM 导航按钮（scene 在过渡完成分支切换，到时 render 末尾再兜底一次）
 
-
-
-  /** 画布左上角的场景导航箭头按钮几何。
-
-   *  树场(treeFarm)→左箭头(arrow_left)回农场；农场(farm)→右箭头(arrow_right)去树场。 */
-
-  _navRect() {
-
-    const m = 4, w = 64, h = 64;
-
-    const y = Math.round(this.canvas.height / 2 - h / 2); // 画布垂直居中
-
-    // 树场场景在右边、农场场景在左边（与箭头方向一致：→去树场在右、←回农场在左）
-
-    const x = (this.scene === 'treeFarm') ? (this.canvas.width - m - w) : m;
-
-    return { x, y, w, h, dir: (this.scene === 'treeFarm') ? 'right' : 'left' };
+    this._updateNavBtn();
 
   },
+
+
+
 
 
 
@@ -2832,167 +2838,101 @@ const UI = {
 
 
 
-  /** 点击坐标是否落在导航箭头按钮内 */
 
-  _navHit(x, y) {
-    const r = this._navRect();
-    if (!this._hitRect(x, y, r)) return false;
-    // 树场未解锁时禁止进入，调试模式下可绕过
-    if (r.dir === 'left') {
-      const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
-      const questNotDone = unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest);
-      const isDebug = typeof Engine !== 'undefined' && Engine.debugFast;
-      if (questNotDone && !isDebug) return false;
-    }
-    return true;
-  },
 
 
+  /** 切场导航按钮 DOM 刷新（0.5.11）：位置/贴图/锁定态全由 JS 管，一个元素走天下。
+   *  农场→按钮在 canvas 左缘外（arrow_right，去树场）；树场→右缘外（arrow_left，回农场）。
+   *  宽屏留白足时贴 canvas 外侧 6px；窄屏留白不足回退 4px 压边兜底。幂等：状态不变 return，render 每帧调也不抖 DOM。 */
 
-  /** 绘制导航箭头按钮（悬停时用 *_highlighted 贴图，底板变亮提示可点） */
+  _updateNavBtn() {
 
-  _drawNavArrow(ctx, dt) {
+    const btn = document.getElementById('nav-scene-btn');
 
-    const r = this._navRect();
+    if (!btn) return;
 
-    const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
-
-    const t = now / 1000;
-
-    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
-
-    const hovering = this._hitRect(this._mouseX, this._mouseY, r);
-
-
-
-    // hover 平滑缩放：目标 1.16，否则 1.0；帧率无关指数趋近（点击/悬停反馈，空闲不循环）
-
-    const target = hovering ? 1.16 : 1.0;
-
-    const k = 1 - Math.pow(0.0008, dt || 0.016);
-
-    this._navHoverCur = Juice.lerp(this._navHoverCur, target, k);
-
-
-
-    const iconKey = r.dir === 'left'
-
-      ? (hovering ? 'arrow_left_highlighted' : 'arrow_left')
-
-      : (hovering ? 'arrow_right_highlighted' : 'arrow_right');
-
-    const inner = r.w - 10;
-
-    const preNav = (typeof ASSETS.get === 'function') ? ASSETS.get(iconKey) : null;
-
-    const navAR = (preNav && preNav.naturalWidth && preNav.naturalHeight)
-
-      ? preNav.naturalWidth / preNav.naturalHeight : 1;
-
-    let dw, dh;
-
-    if (navAR >= 1) { dw = inner; dh = inner / navAR; }
-
-    else { dh = inner; dw = inner * navAR; }
-
-    const scale = this._navHoverCur;
-
-    dw *= scale; dh *= scale;
-
-
-
-    // 招手（仅 hover 时）：沿指向缓慢、平滑地滑出再滑回（easeInOut，单次约 2.2s，幅度 6px），
-
-    // 像「往这边走」。空闲时完全静止——遵循 NN/g：无关的持续动效会劫持注意力，应克制。
-
-    let nudge = 0;
-
-    if (hovering) {
-
-      const period = 2.2;
-
-      const ph = (t % period) / period;                 // 0→1
-
-      const eased = (1 - Math.cos(ph * Math.PI * 2)) / 2; // 0→1→0 平滑，无突变
-
-      nudge = eased * 6;
-
-    }
-
-    const baseX = (r.dir === 'left') ? r.x : (r.x + r.w - dw);
-
-    const dirSign = (r.dir === 'left') ? -1 : 1;        // ← 朝左、→ 朝右
-
-    const dx = Math.round(baseX + dirSign * nudge);     // 沿指向滑动：招手往那边走
-
-    const dy = Math.round(r.y + (r.h - dh) / 2);
-
-
-
-    // hover 柔光晕（仅高亮态、静态非循环）：轻量提示
-
-    if (hovering) {
-
-      const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, r.w * 0.62);
-
-      gr.addColorStop(0, 'rgba(255,238,170,0.14)');
-
-      gr.addColorStop(1, 'rgba(255,238,170,0)');
-
-      ctx.save();
-
-      ctx.fillStyle = gr;
-
-      ctx.beginPath(); ctx.arc(cx, cy, r.w * 0.62, 0, Math.PI * 2); ctx.fill();
-
-      ctx.restore();
-
-    }
-
-
-
-    // 主要导航控件：始终清晰可见（不再全屏按距离淡入淡出）
-
-    ctx.save();
-
-    ctx.globalAlpha = hovering ? 1 : 0.92;
-
-    ASSETS.draw(ctx, iconKey, dx, dy, dw, dh, false) // 关插值：消除缩小贴图边缘黑色渗边 + 移动颤抖
-
-      || (ctx.font = `${r.h * 0.5}px "VT323", monospace`, this._setTextCenter(ctx),
-
-          ctx.fillStyle = '#fff', ctx.fillText(r.dir === 'left' ? '←' : '→', cx, cy));
-
-    ctx.restore();
-
-    // 树场未解锁时：绘制半透明遮罩 + 锁图标（调试模式跳过）
     const treeFarmUnlock = (typeof DATA !== 'undefined' && DATA.TREEFARM && DATA.TREEFARM.unlockOn);
     const isDebug = typeof Engine !== 'undefined' && Engine.debugFast;
     const questNotDone = treeFarmUnlock && typeof Quest !== 'undefined' && !Quest.isDone(treeFarmUnlock);
-    const treeFarmLocked = r.dir === 'left' && questNotDone && !isDebug;
-    if (treeFarmLocked) {
-      const lockImg=(typeof ASSETS!=='undefined'&&ASSETS.get)?ASSETS.get('Icon_Locked'):null;
-      if (lockImg){
-        // 锁图标大小减半，跟随箭头一起移动
-        const lockH=r.w*0.30;
-        const lockAR=lockImg.naturalWidth/lockImg.naturalHeight;
-        const lockW=lockH*lockAR;
-        // 计算招手动效（与箭头同步）- 使用已声明的 nudge 变量
-        const lockNudge = hovering ? nudge : 0;
-        const lockDirSign = (r.dir === 'left') ? -1 : 1;
-        const lockBaseX = (r.dir === 'left') ? r.x : (r.x + r.w - lockW);
-        const lockX = Math.round(lockBaseX + lockDirSign * lockNudge + 15);  // 向右偏移15像素
-        const lockY = Math.round(r.y + (r.h - lockH) / 2);
-        // hover时红色发光效果
-        if (hovering) {
-          ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
-          ctx.shadowBlur = 10;
-        }
-        ctx.drawImage(lockImg,0,0,lockImg.naturalWidth,lockImg.naturalHeight,
-          lockX, lockY, lockW, lockH);
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
+    const locked = this.scene === 'farm' && questNotDone && !isDebug;
+
+    const ga = btn.parentElement;
+    const cl = this.canvas.offsetLeft;
+    const cr = cl + this.canvas.offsetWidth;
+    // 0.5.13：按钮宽度按真实 DOM 读（CSS 按贴图宽高比变窄后不再是固定 56），先解 display 再读 offsetWidth
+    btn.style.display = '';
+    const bw = btn.offsetWidth || 56;
+    let left;
+    if (this.scene === 'farm') left = Math.max(4, cl - bw - 6);
+    else left = Math.min(ga.clientWidth - (bw + 4), cr + 6);
+
+    const key = this.scene + '|' + locked + '|' + Math.round(left);
+    if (this._navBtnLast === key) return;
+    this._navBtnLast = key;
+
+    btn.style.left = left + 'px';
+
+    // 0.5.13：方向映射回旧版语义（git 1b126f2 _drawNavArrow 2878 行）——farm 场景按钮在左、显示 ←（arrow_left）；
+    // treeFarm 场景按钮在右、显示 →（arrow_right）。0.5.11 误写成 farm→arrow_right，本条改回。
+    const mainImg = btn.querySelector('img');
+    if (mainImg && (typeof ASSETS !== 'undefined') && ASSETS.get) {
+      const img = ASSETS.get(this.scene === 'farm' ? 'arrow_left' : 'arrow_right');
+      if (img && mainImg.src !== img.src) mainImg.src = img.src;
+    }
+
+    let lockEl = btn.querySelector('.nav-lock');
+    if (locked) {
+      if (!lockEl) {
+        lockEl = document.createElement('img');
+        lockEl.className = 'nav-lock';
+        lockEl.alt = '';
+        btn.appendChild(lockEl);
       }
+      const lockImg = (typeof ASSETS !== 'undefined' && ASSETS.get) ? ASSETS.get('Icon_Locked') : null;
+      if (lockImg) lockEl.src = lockImg.src;
+    } else if (lockEl) {
+      lockEl.remove();
+    }
+
+  },
+
+
+  /** DOM 导航按钮点击（0.5.11）：锁定 → nudge；未锁定 → 切场景 */
+
+  _navBtnClick() {
+
+    const treeFarmUnlock = (typeof DATA !== 'undefined' && DATA.TREEFARM && DATA.TREEFARM.unlockOn);
+    const isDebug = typeof Engine !== 'undefined' && Engine.debugFast;
+
+    if (this.scene === 'farm' && treeFarmUnlock && typeof Quest !== 'undefined' && !Quest.isDone(treeFarmUnlock) && !isDebug) {
+
+      this._navLockedNudge();
+
+      return;
+
+    }
+
+    this.toggleScene();
+
+  },
+
+
+  /** 锁定提示：抖动画布 + 提示应完成任务（文案公式照抄旧 canvas 箭头点击） */
+
+  _navLockedNudge() {
+
+    const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
+
+    if (unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest)) {
+
+      const quests = (typeof DATA !== 'undefined' && DATA.QUESTS) || [];
+
+      const q = quests.find(x => x.id === unlockQuest);
+
+      const questTitle = q?.title || '林间初探';
+
+      this._shakeCanvas(`树场还未解锁，请完成任务「${questTitle}」`, 3000);
+
     }
 
   },
@@ -3478,9 +3418,11 @@ const UI = {
 
       this._vegCache = null;                              // 切场：失效旧 vegCache，防止跨场景残留
 
-      const r = this._navRect();
+      const cs = this.cellSize;
+      const cx = this.scene === 'farm' ? cs : this.canvas.width - cs;   // 0.5.13：尘爆在新场景按钮那一侧的画布边缘（farm=左缘、treeFarm=右缘）一格内
+      const cy = this.canvas.height / 2;
 
-      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      this._updateNavBtn();
 
       if (this._particles) {
 
@@ -3807,7 +3749,7 @@ const UI = {
 
     const C = DATA.FARM.COLS, i = r * C + c;
 
-    // 雪埋草：雪覆盖率与草基部截断率正相关（比值 1），最多截断 1/4（100% 覆盖）。截断的是草叶基部（被雪盖住那段）。
+    // 雪埋草：草基部截断面积 = 雪占格面积 × 50%（0.5.50 连续公式，替代旧二值 0.25）；满格雪=截半格。截断的是草叶基部（被雪盖住那段）。
 
     // 仅「雪上植被层(_vegCache) / 草颤层」需要此截断（让雪埋住草基）；静态层(_farmCache)是雪融化后露出的底，
 
@@ -3815,29 +3757,19 @@ const UI = {
 
     const cellLeft = c * cs, cellTop = r * cs;
 
-    let snowCovered = false;
+    // 0.5.50：取该格雪片像素尺寸 ps（无雪=0）；量化面积比替代旧「有无雪二值」。
+    let ps = 0;
 
     if (snowTruncate && this._snowGround) {
-
-      for (const f of this._snowGround) {
-
-        // 雪片落在同一游戏格（c/r 精确匹配）即认为该格积雪，截断草基部
-
-        if (f.c === c && f.r === r) {
-
-          snowCovered = true;
-
-          break;
-
-        }
-
-      }
-
+      const sf = this._snowGround.find(f => f.c === c && f.r === r);
+      if (sf) ps = sf.pixelStep != null ? sf.pixelStep : 1;
     }
 
-    const cov = snowCovered ? 1.0 : 0.0;  // 积雪则满覆盖截断，否则无截断
-
-    const trunc = cov * 0.25;
+    // 量化：缓存 key 专用、公式取整同用（防 veg/描边两层不一致）；48px→8px 一档（0~6 桶），
+    // 雪长大期间每格最多 6 次重烘（veg 层 + 描边 A），不是每 tick 一次。
+    const qstep = Math.max(1, cs / 6);
+    const szQ = Math.min(ps, cs) > 0 ? Math.ceil(Math.min(ps, cs) / qstep) * qstep : 0;
+    const trunc = 0.5 * (szQ / cs) * (szQ / cs);   // 满格雪(48)→0.5；ps=24→0.125；ps=1→≈0.0278
 
     const s = sway || 0;
 
@@ -4648,7 +4580,8 @@ const UI = {
                           (this._grassShakes && this._grassShakes.length > 0) ||
                           (this._ripples && this._ripples.length > 0) ||
                           this._transition ||
-                          snowMoving || leafFalling || particlesAlive;
+                          snowMoving || leafFalling || particlesAlive ||
+                          this._weatherPhase === 'wind' || (this._windStreaks && this._windStreaks.length);                                  // 大风期常驻渲染（0.5.12）：风丝推进不依赖鼠标事件；风停 phase 回 clear，_updateWind 清 _windStreaks，条件自动为假、循环回静默（零性能残留）；0.5.40 散场淡出：池非空=淡出中，照走
       if (!needsRender) {
         this._animRaf = requestAnimationFrame(loop);
         return;
@@ -5248,29 +5181,6 @@ const UI = {
     if (this._transition) return; // 切换滑场动画进行中，屏蔽点击
 
 
-
-    // 画布左上角导航箭头：树场←回农场 / 农场→去树场（先于网格点击判定）
-
-    // 检查是否点击了导航箭头区域（不含解锁判断，用于显示锁定提示）
-    const navRect = this._navRect();
-    const navClick = this._hitRect(x, y, navRect);
-    if (navClick) {
-      // 尝试导航，如果未解锁则显示提示
-      if (this._navHit(x, y)) {
-        this.toggleScene();
-      } else {
-        const unlockQuest = DATA.TREEFARM && DATA.TREEFARM.unlockOn;
-        if (unlockQuest && typeof Quest !== 'undefined' && !Quest.isDone(unlockQuest)) {
-          const quests = (typeof DATA !== 'undefined' && DATA.QUESTS) || [];
-          const q = quests.find(x => x.id === unlockQuest);
-          const questTitle = q?.title || '林间初探';
-          this._shakeCanvas(`树场还未解锁，请完成任务「${questTitle}」`, 3000);
-        }
-      }
-      return;
-    }
-
-
     const { row, col } = this._cellAt(x, y);
 
 
@@ -5371,6 +5281,12 @@ const UI = {
 
             (res) => this._plantDone(res, seedName));
 
+        } else if (tool === 'axe') {
+          // B5：主农场没有树，斧头点地不再静默——提示去树场
+          this.showStatus('主农场没有树，按 T 键去树场砍树', 1500);
+        } else if (tool === 'acorn') {
+          // B5：橡果要去树场种植
+          this.showStatus('橡果要去树场种植，按 T 键去树场', 1500);
         }
 
         return;

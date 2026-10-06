@@ -1093,40 +1093,42 @@ const _questMethods = {
    */
 
 
+
+  // 成就 toast 队列顺序消费：showAchievement 不再立即渲染，而是 push 进队列，
+  // 由 _pumpAchievementQueue 逐条取出显示（同批多个成就依次各显示，不再互相覆盖）。
   showAchievement(title, iconKey = 'nether_star', duration = 3500) {
+    if (!this._achievementQueue) this._achievementQueue = [];
+    this._achievementQueue.push({ title, iconKey, duration });
+    // 队列非空且当前没有正在显示的一条时，kick off 消费
+    if (this._achievementQueue.length > 0 && !this._achievementActive) this._pumpAchievementQueue();
+  },
 
+  /** 成就 toast 队列逐条消费：取一条渲染，用该条独立定时器收尾并触发下一条（绝不交叉清除别的条）。
+   *  渲染前 void el.offsetWidth 强制 reflow，保证每条都重放一次 toastBounce 动画。 */
+  _pumpAchievementQueue() {
+    if (this._achievementActive) return;                          // 有正在显示的一条 → 等它的定时器收尾后再来
+    if (!this._achievementQueue || !this._achievementQueue.length) return;
+    const item = this._achievementQueue.shift();
     const el = document.getElementById('achievement-toast');
-
     if (!el) return;
-
-    const iconSrc = this._assetURL(iconKey);
-
+    const iconSrc = this._assetURL(item.iconKey);
     const frameSrc = this._assetURL('blank_row_frame');
-
     el.innerHTML = `<div class="achievement-frame">` +
-
       (frameSrc ? `<img class="achievement-bg" src="${frameSrc}" alt="">` : '') +
-
-      (iconSrc ? `<img class="achievement-icon" src="${iconSrc}" alt="${title}">` : '') +
-
+      (iconSrc ? `<img class="achievement-icon" src="${iconSrc}" alt="${item.title}">` : '') +
       `<div class="achievement-text">` +
-
       `<span class="achievement-label">成就达成</span>` +
-
-      `<span class="achievement-title">${title}</span>` +
-
+      `<span class="achievement-title">${item.title}</span>` +
       `</div></div>`;
-
+    void el.offsetWidth;                                          // 强制 reflow：切换前重排，下一条才重放动画
     el.className = 'toast-visible';
-
-    if (this._achievementTimeout) clearTimeout(this._achievementTimeout);
-
+    this._achievementActive = true;
+    // 本条自己的定时器：收尾时置回 active=false、隐藏本条，再 pump 出下一条（绝不清别的条）
     this._achievementTimeout = setTimeout(() => {
-
+      this._achievementActive = false;
       el.className = 'toast-hidden';
-
-    }, duration);
-
+      this._pumpAchievementQueue();
+    }, item.duration);
   },
 
 

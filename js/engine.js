@@ -154,6 +154,7 @@ const Engine = {
     if (typeof Player !== 'undefined') { Player.restoreStamina(); }
     if (this.onNewDay) this.onNewDay(this.day, this.season, this.year);
     this.running = true;
+    this._clearTickTimer();   // 睡觉路径：先清旧链 pending timer，防双时钟（自然午夜路径旧 timer 已 fire，清它无副作用）
     this._startTick();
   },
 

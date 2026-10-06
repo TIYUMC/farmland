@@ -110,6 +110,7 @@ UI._buildTrades = function() {
         id: 'buy_' + item.id, kind: 'tool', cropId: item.id,
         label: locked ? '???' : '买' + item.name,
         locked: locked,
+        lockOn: item.lockOn || null,
         input:  { key: 'money', label: String(item.cost) },
         input2: extra
           ? { key: (exDef && (exDef.shopSellIcon || exDef.assetHarvest)) || extra.id,
@@ -128,6 +129,7 @@ UI._buildTrades = function() {
       id: 'buy_' + cropId, kind: 'buy', cropId,
       label: locked ? '???' : '买' + item.name,
       locked: locked,
+      lockOn: item.lockOn || null,
       input:  { key: 'money', label: String(def.seedCost) },
       output: { key: this._seedIconKey(cropId), label: item.name },
       canDo: locked ? false : Player.money >= def.seedCost,
@@ -137,6 +139,7 @@ UI._buildTrades = function() {
       id: 'sell_' + cropId, kind: 'sell', cropId,
       label: locked ? '???' : '卖' + def.name,
       locked: locked,
+      lockOn: item.lockOn || null,
       input:  { key: def.shopSellIcon || def.assetHarvest, label: def.name + '×' + have },
       output: { key: 'money', label: String(have * def.sellPrice) },
       canDo: locked ? false : have > 0,
@@ -221,9 +224,10 @@ UI._executeTrade = function(t) {
   }
   const res = t.kind === 'buy'
     ? Economy.buySeed(t.cropId)
-    : Economy.sellCropUnits(t.cropId, 1);
+    : Economy.sellCropUnits(t.cropId, this._shopDroppedCount); // B2：一次卖掉拖入的全部数量（sellCropUnits 内部 Math.min 钳制库存）
   if (res && res.ok) {
-    this._shopDroppedCount -= cost;
+    // B2 连带：卖分支减去本次实际卖掉的个数（res.count 含库存钳制），买分支仍按 cost 扣
+    this._shopDroppedCount -= (t.kind === 'buy') ? cost : res.count;
     if (t.kind === 'buy') {
       this.showStatus(`✅ 购买了 ${res.name}`, 1000);
       Player.selectTool(`seed-${t.cropId}`);
@@ -643,12 +647,16 @@ UI._drawShopOverlay = function() {
   const toolReserved = this._toolReserved || [];
   const items = [];
   const pushStacks = (key, total) => {
-    total = total || 0;
+    const orig = total || 0;               // 先记原始数量（扣预留前的真实总数）
+    total = orig;
     if (key === reservedKey) total -= reserved; // 扣掉已拖入输入框的那一份（作物单材料）
     if (toolReserved.includes(key) && toolParts[key]) total -= toolParts[key]; // 工具多材料预留
     total = Math.max(0, total);
-    for (const inSlot of UI._stackChunks(total)) {
-      items.push({ key, count: inSlot });
+    const chunks = UI._stackChunks(total);
+    if (chunks.length) {
+      for (const inSlot of chunks) items.push({ key, count: inSlot });
+    } else if (orig > 0) {
+      items.push({ key, count: 0 }); // 全被拖进输入框：留占位格，防止后续物品顶上来
     }
   };
   // 工具材料按总块数推入（砍树/加工后刷新）
@@ -675,6 +683,12 @@ UI._drawShopOverlay = function() {
   for (const rid of Object.keys(resMap)) {
     if (Player[rid] > 0 && !Player._hbHasResource(rid)) {
       pushStacks(resMap[rid], Player[rid]);
+      (this._shopGShownRes = this._shopGShownRes || new Set()).add(rid);
+    } else if (!Player._hbHasResource(rid) && this._shopGShownRes && this._shopGShownRes.has(rid)) {
+      // 曾显示过、现已归 0（被花光/用完）：留占位格，防止后续物品滑位（0.5.37）
+      items.push({ key: resMap[rid], count: 0 });
+    } else {
+      if (this._shopGShownRes) this._shopGShownRes.delete(rid);
     }
   }
   // 工具（锄头/水桶/斧头）落主背包时 G 块也要画：单一居所 = 快捷栏没有(_hbHasTool 为假)才由 G 块画，
@@ -698,6 +712,7 @@ UI._drawShopOverlay = function() {
   }
   // 重建背包DOM
   for (let i = 0; i < 36 && i < items.length; i++) {
+    if (!items[i].count) continue;   // 占位格：网格索引 i 已占住（位置保留），但不画图标
     const c = i % 9, r = Math.floor(i / 9);
     createItemBG(items[i].key, 115 + 18 * c, 91 + 18 * r, 13, items[i].count);
   }
@@ -927,7 +942,10 @@ UI._onShopClick = function(x, y) {
       // 如果是锁定项，显示提示并抖动
       const t = this._trades.find(z => z.id === r.id);
       if (t && t.locked) {
-        const lockMsg = t.lockOn ? '请先完成任务「' + t.lockOn + '」' : '该选项尚未解锁';
+        const qDef = t.lockOn && typeof DATA !== 'undefined' && DATA.QUESTS
+          ? DATA.QUESTS.find(x => x.id === t.lockOn) : null;
+        const qName = qDef ? String(qDef.title || '').replace(/^▶\s*/, '') : (t.lockOn || '');
+        const lockMsg = t.lockOn ? '请先完成任务「' + qName + '」' : '该选项尚未解锁';
         if (typeof UI !== 'undefined' && UI._shakeCanvas) {
           UI._shakeCanvas.call(this, lockMsg, 2500);
         } else {

@@ -35,17 +35,23 @@ const Quest = {
     this._evaluate();
   },
 
-  /** 遍历任务树，满足 track 的标记为完成 */
+  /** 遍历任务树，满足 track 且前置全部完成的标记为完成（前置门控：不凭空解锁） */
   _evaluate() {
     const quests = (typeof DATA !== 'undefined' && DATA.QUESTS) || [];
     const done = this._done();
     let changed = false;
-    for (const q of quests) {
-      if (done[q.id]) continue;
-      if (this._meets(q.track)) {
-        done[q.id] = true;
-        changed = true;
-        this._announce(q);
+    let progress = true;
+    while (progress) {
+      progress = false;
+      for (const q of quests) {
+        if (done[q.id]) continue;
+        if (!this._prereqMet(q, done)) continue;   // 前置（网关/父节点/显式 prereq）全完成才允许点亮
+        if (this._meets(q.track)) {
+          done[q.id] = true;
+          changed = true;
+          progress = true;        // 有节点新亮 → 再扫一轮，让依赖它的后继补上
+          this._announce(q);
+        }
       }
     }
     if (changed) {
@@ -122,6 +128,21 @@ const Quest = {
     return q.parent ? [q.parent] : [];
   },
 
+  /** 该节点的前置是否全部完成（用于自动型门控）。口径与 _manualClaimable 一致：网关边优先 + 显式 prereq 数组。
+   *  snap 传入本轮 done 快照，避免依赖 Player.questsDone 尚未写回的时机；'always' 型前置视为恒完成。 */
+  _prereqMet(q, snap) {
+    if (!q) return true;
+    const pre = this._prereqIds(q);
+    if (Array.isArray(q.prereq)) pre.push.apply(pre, q.prereq);
+    if (!pre.length) return true;
+    const quests = (typeof DATA !== 'undefined' && DATA.QUESTS) || [];
+    return pre.every(pid => {
+      if (snap[pid]) return true;
+      const p = quests.find(x => x.id === pid);
+      return !!(p && p.track && p.track.k === 'always');
+    });
+  },
+
   /** 该手动成就当前是否可领取（前置全部完成） */
   _manualClaimable(q) {
     if (!q) return false;
@@ -148,12 +169,13 @@ const Quest = {
     }
     if (typeof Player !== 'undefined') Player.questsDone[id] = true;
     this._grantReward(q.reward);
+    // 前置门控：手动节点完成可能解锁其后等待的自动任务（如 a1/m3/m4），立即重评补点亮
+    this._evaluate();
     // 重建背包缓存，确保金锭/工具等立即显示
     if (typeof Player !== 'undefined') Player._rebuildInvSlots();
     // 提交消耗了物品：背包若开着则实时刷新
     if (typeof globalThis.UI !== 'undefined') {
-      if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
-      else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+      if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
       if (globalThis.UI._questOpen && globalThis.UI._renderQuest) globalThis.UI._renderQuest();
       if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
     }
@@ -183,8 +205,7 @@ const Quest = {
       // 无条件刷新快捷栏和背包（确保工具立即显示）
       Player._rebuildInvSlots();
       if (typeof globalThis.UI !== 'undefined') {
-        if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
-        else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
         if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
       }
     }
@@ -195,8 +216,7 @@ const Quest = {
       // 无条件刷新快捷栏和背包（确保工具立即显示）
       Player._rebuildInvSlots();
       if (typeof globalThis.UI !== 'undefined') {
-        if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
-        else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
         if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
       }
     }
@@ -206,8 +226,7 @@ const Quest = {
       // 无条件刷新快捷栏和背包（确保工具立即显示）
       Player._rebuildInvSlots();
       if (typeof globalThis.UI !== 'undefined') {
-        if (globalThis.UI._inventoryOpen && globalThis.UI.renderInventory) globalThis.UI.renderInventory();
-        else if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
+        if (globalThis.UI.renderInventory) globalThis.UI.renderInventory();
         if (globalThis.UI._renderBottomHotbar) globalThis.UI._renderBottomHotbar();
       }
     }

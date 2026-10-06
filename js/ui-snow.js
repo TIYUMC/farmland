@@ -261,7 +261,7 @@ const _snowMethods = {
 
     // 现在雪由 _accumulateSnow 后台累积（与空中飘雪无关）；飘落雪花只做纯视觉，不生成积雪。
 
-    if (!this._snowGround) { this._snowGround = []; this._vegSnowTotal = -1; }
+    if (!this._snowGround) { this._snowGround = []; this._vegSnowTotal = -1; this._vegSnowSig = ''; }
 
     this._snowTotal = this._snowGround.length;
 
@@ -400,7 +400,7 @@ const _snowMethods = {
 
     if (this._snowCtx) this._snowCtx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
 
-    if (had) { this._buildVegCache(); this._vegSnowTotal = 0; }
+    if (had) { this._buildVegCache(); this._vegSnowTotal = 0; this._vegSnowSig = ''; }
 
   },
 
@@ -614,15 +614,17 @@ const _snowMethods = {
 
       this._redrawSnowAll();
 
-      if (this._snowTotal !== this._vegSnowTotal) { this._buildVegCache(); this._vegSnowTotal = this._snowTotal; }  // 覆盖率变→刷新草基部截断
+      // 0.5.50：veg 层失效改按「雪签名」（格+量化桶）比较，替代旧「雪花数量」；同桶内 ps 24→31 不重烘、跨桶 31→40 各重烘一次。_snowTotal 保留（L537 他处仍用），仅新增 sig 比较
+      const sig = this._snowSig();
+      if (sig !== this._vegSnowSig) { this._buildVegCache(); this._vegSnowSig = sig; }  // 雪签名变→刷新草基部截断
 
       this._shakeSnowBaseCache = null;                         // 雪变化→有雪底缓存失效（懒重建）
 
-    } else if (this._snowCanvas && this._vegSnowTotal !== 0) {
+    } else if (this._snowCanvas && this._vegSnowSig) {
 
       this._snowCtx.clearRect(0, 0, this._snowCanvas.width, this._snowCanvas.height);
 
-      this._buildVegCache(); this._vegSnowTotal = 0;               // 雪清空→草基部解埋
+      this._buildVegCache(); this._vegSnowSig = '';               // 雪清空→草基部解埋（sig 归空串，veg 重建无截断）
 
       this._shakeSnowBaseCache = null;
 
@@ -703,6 +705,23 @@ const _snowMethods = {
    *  只有落在光秃地面 / 耕地 / 裸土 / 水面（即无草无树的地表）才出涟漪。 */
 
 
-};
+
+
+  /** 0.5.50：雪签名单一权威源——"格+量化桶"（"r,c,bucket|…"，桶=ceil(min(ps,cs)/max(1,cs/6))，48px→8px 一档 0~6）。
+   *  供 _ensureGrassOutline（描边 key）与 _syncSnowCanvas（veg 层失效）共用，防三处漂移。
+   *  同桶内 ps 长大不重烘；跨桶各重烘一次。无雪返回空串（末支据此判雪清空）。 */
+  _snowSig() {
+    const cs = this.cellSize;
+    if (!this._snowGround || !this._snowGround.length) return '';
+    const qstep = Math.max(1, cs / 6);
+    const parts = [];
+    for (const f of this._snowGround) {
+      const ps = f.pixelStep != null ? f.pixelStep : 1;
+      const b = Math.ceil(Math.min(ps, cs) / qstep);   // 量化桶 0~6
+      parts.push(f.r + ',' + f.c + ',' + b);
+    }
+    parts.sort();
+    return parts.length + ':' + parts.join('|');
+  },};
 
 Object.assign(UI, _snowMethods);

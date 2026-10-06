@@ -167,24 +167,24 @@ const DATA = {
   //   4) 布局：每分类一条水平直线，节点间距 DX=75，y 统一 320（由 _renderQuest 的 cover 缩放 + 拖拽漫游呈现）。
     QUESTS: [
     // —— 主线：教程+里程碑+支线连续一条直线（y=350）——
-    { id:'root',     parent:null,       x:100,  y:350, icon:'book_purple', title:'初来乍到',   desc:'欢迎来到 Farmland。点击开始游戏领取启程物资，开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{ items:[{id:'hoe', count:1},{id:'water', count:1}], money:5} },
-    { id:'tut1',     parent:'root',     x:200,  y:350, icon:'bundle_filled', title:'启程礼包', desc:'点击开始游戏，领取初始道具：锄头、浇水壶、5颗小麦种子', cat:'core', manual:true, tutorial:true, reward:{ items:[{id:'seed:wheat', count:5}] } },
-    { id:'tut_hoe',  parent:'tut1',     x:300,  y:350, icon:'wooden_hoe', title:'锄头使用', desc:'点击下方工具栏选择锄头，左键点击草地除草，再次点击泥土耕地', cat:'core', manual:true, tutorial:true },
-    { id:'tut_grass',parent:'tut_hoe',  x:400,  y:350, icon:'short_dry_grass', title:'除草方法', desc:'草地上会长出杂草，用锄头点击即可清除。草地也可直接耕地', cat:'core', manual:true, tutorial:true },
+    { id:'root',     parent:null,       x:100,  y:350, icon:'book_purple', title:'初来乍到',   desc:'欢迎来到 Farmland。进入游戏即自动领取启程物资（锄头、水桶、5 金锭），开始你的农场之旅。', cat:'core', manual:true, track:{k:'manual'}, reward:{ items:[{id:'hoe', count:1},{id:'water', count:1}], money:5} },
+    { id:'tut1',     parent:'root',     x:200,  y:350, icon:'bundle_filled', title:'启程礼包', desc:'点击本节点领取 5 颗小麦种子用于播种（锄头、水桶已在「初来乍到」领取）。', cat:'core', manual:true, tutorial:true, reward:{ items:[{id:'seed:wheat', count:5}] } },
+    { id:'tut_hoe',  parent:'tut1',     x:300,  y:350, icon:'wooden_hoe', title:'锄头使用', desc:'点击下方工具栏选择锄头，左键点击草地将其清除，再次点击裸土即可耕地。', cat:'core', manual:true, tutorial:true },
+    { id:'tut_grass',parent:'tut_hoe',  x:400,  y:350, icon:'short_dry_grass', title:'除草方法', desc:'地面上长着草，选择锄头清除即可露出裸土，随后可耕为田地。', cat:'core', manual:true, tutorial:true },
     { id:'a1',       parent:'tut_grass',x:500,  y:350, icon:'dirt', title:'开垦田地', desc:'用锄头点击草地或裸土，将其变为耕地。耕地是种植作物的基础。', cat:'core', track:{k:'till', n:1} },
-    { id:'tut_seed', parent:'a1',       x:600,  y:350, icon:'wheat_seeds', title:'播种方法', desc:'点击底部工具栏的背包按钮打开背包，将种子拖到快捷栏，选中后点击耕地播种', cat:'core', manual:true, tutorial:true },
-    { id:'tut_water',parent:'tut_seed', x:700,  y:350, icon:'water_bucket', title:'浇水技巧', desc:'点击下方工具栏选择水壶，点击已播种耕地浇水。下雨自动浇', cat:'core', manual:true, tutorial:true },
+    { id:'tut_seed', parent:'a1',       x:600,  y:350, icon:'wheat_seeds', title:'播种方法', desc:'在商店购买小麦种子，会自动进入快捷栏；选中种子后左键点击耕地播种。', cat:'core', manual:true, tutorial:true },
+    { id:'tut_water',parent:'tut_seed', x:700,  y:350, icon:'water_bucket', title:'浇水技巧', desc:'点击下方工具栏选择水壶，左键点击已播种耕地浇水。下雨时自动浇灌。', cat:'core', manual:true, tutorial:true },
     { id:'tut_inv',  parent:'tut_water',x:800,  y:350, icon:'book_purple', title:'背包操作', desc:'点击底部工具栏的背包按钮打开背包，左键拖拽移动物品，右键点击物品可拿走一半', cat:'core', manual:true, tutorial:true },
-    { id:'m3',       parent:'tut_inv',  x:900,  y:350, icon:'wheat_seeds', title:'初次收获', desc:'作物成熟（金黄饱满）后右键点击收获', cat:'core', track:{k:'harvest', n:1} },
-    { id:'tut_harvest',parent:'m3',     x:1000, y:350, icon:'wheat_seeds', title:'收获作物', desc:'作物完全成熟时右键点击收获，不同作物成熟时间不同，小麦约4天', cat:'core', manual:true, tutorial:true },
-    { id:'tut_sell', parent:'tut_harvest',x:1100, y:350, icon:'money', title:'出售赚钱', desc:'点击底部工具栏的商店按钮，在背包中右键点击作物即可卖给商人', cat:'core', manual:true, tutorial:true },
+    { id:'m3',       parent:'tut_inv',  x:900,  y:350, icon:'wheat_seeds', title:'初次收获', desc:'选择锄头，左键点击已成熟（金黄饱满）的作物即可收获。', cat:'core', track:{k:'harvest', n:1} },
+    { id:'tut_harvest',parent:'m3',     x:1000, y:350, icon:'wheat_seeds', title:'收获作物', desc:'选择锄头，左键点击完全成熟的作物即可收获，不同作物成熟时间不同，小麦约 4 天。', cat:'core', manual:true, tutorial:true },
+    { id:'tut_sell', parent:'tut_harvest',x:1100, y:350, icon:'money', title:'出售赚钱', desc:'点击底部工具栏的商店按钮，将作物拖入出售输入框即可完成交易换取金锭。', cat:'core', manual:true, tutorial:true },
     { id:'m4',       parent:'tut_sell', x:1200, y:350, icon:'money', title:'第一桶金', desc:'累计赚取 50 金锭，农场初具规模', cat:'core', track:{k:'earn', n:50} },
     { id:'tut_craft',parent:'m4',       x:1300, y:350, icon:'command_block', title:'合成系统', desc:'点击底部工具栏的背包按钮，将材料放入左上角2×2合成格，点击成品收入背包', cat:'core', manual:true, tutorial:true },
-    { id:'tut_wood', parent:'tut_craft',x:1400, y:350, icon:'oak_log', title:'砍伐树木', desc:'点击下方工具栏选择斧头，前往树场点击树木砍伐', cat:'core', manual:true, tutorial:true },
+    { id:'tut_wood', parent:'tut_craft',x:1400, y:350, icon:'oak_log', title:'砍伐树木', desc:'先获得斧头（在商店购买），选中后前往树场（按 T 键切换）点击树木砍伐。', cat:'core', manual:true, tutorial:true },
 
     // —— 耕作支线（挂在主线下方）——
     { id:'fa1',  parent:'tut_grass',  x:500,  y:500, icon:'wheat_seeds', title:'镇上粮仓', desc:'将 20 份新收小麦送进镇上粮仓储备过冬，换取 10 颗土豆种子', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:20}, reward:{ items:[{id:'seed:potato', count:10}] } },
-    { id:'fa2',  parent:'fa1',     x:620,  y:500, icon:'土豆', title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 50 金锭酬金', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:50 } },
+    { id:'fa2',  parent:'fa1',     x:620,  y:500, icon:'wheat_seeds', title:'丰收宴席', desc:'为镇上丰收庆典供应 40 份麦穗，换取 50 金锭酬金', cat:'farm', manual:true, track:{k:'submit', item:'crop:wheat', n:40}, reward:{ money:50 } },
 
     // —— 采集支线（挂在主线下方）——
     { id:'fo1',  parent:'tut_wood', x:1400, y:500, icon:'oak_log', title:'林间驿站', desc:'为林间驿站供应 20 份原木修缮木屋，换取 5 颗甜浆果种子', cat:'forage', manual:true, track:{k:'submit', item:'wood', n:20}, reward:{ items:[{id:'seed:strawberry', count:5}] } },
@@ -218,4 +218,9 @@ const DATA = {
   CRAFT_2X2: [
     { in: { oak_log: 1 }, out: { item: 'oak_planks', count: 4 } },
   ],
+
+  // === 天气参数（0.5.46 删大雾：移除雾相关全部参数，仅留大风散场淡出秒数；雾系统已彻底删除，零玩法影响）===
+  WEATHER: {
+    windFadeSec: 0.6,   // 大风散场淡出秒数（0.5.40）
+  },
 };

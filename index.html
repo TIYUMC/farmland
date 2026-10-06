@@ -10,7 +10,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
 
-  <title>垄上春秋</title>
+  <title>Terraform · 内测版（1.0 定名「垄上春秋」）</title>
 
   <link rel="stylesheet" href="css/style.css">
 
@@ -40,11 +40,17 @@
 
           <div id="btn-new-game" class="mc-btn">单人游戏</div>
 
-          <div id="btn-continue" class="mc-btn" style="display:none">继续游戏</div>
+          <div id="save-slot-wrap" style="position:relative">
+            <div id="save-slot-btn" class="mc-select" style="cursor:pointer">选择存档…</div>
+            <div id="save-slot-panel" style="display:none"></div>
+            <select id="save-slot" class="mc-select" style="display:none"></select>
+          </div>
+
+          <!-- 0.5.51：#save-slot 原生 select 已隐藏，存档选择走自定义 #save-slot-btn + #save-slot-panel（弹层 background 用注册表 enchantment 贴图）；选项文案/槽号/选中语义与原生一致 -->
 
         </div>
 
-        <div id="title-version">0.5.7</div>
+        <div id="title-version">0.5.51</div>
 
       </div>
 
@@ -106,6 +112,9 @@
 
             <option value="rain">雨（冬季=雪）</option>
 
+            <option value="wind">大风</option>
+
+
           </select>
 
           <select id="time-jump">
@@ -135,6 +144,10 @@
     <div id="game-area">
 
       <canvas id="game-canvas"></canvas>
+
+      <!-- 切场导航箭头（0.5.51 DOM 化）：悬浮在 canvas 两侧、每场景 1 个，位置/贴图/锁定态由 ui.js 管 -->
+      <div id="nav-scene-btn" title="切换场景" style="display:none"><img alt=""></div>
+
 
       <!-- 商店物品图标叠层（DOM 渲染，清晰度与工具栏一致） -->
 
@@ -269,47 +282,47 @@
 
 
 
-  <script src="js/assets.js?v=0.5.7"></script>
+  <script src="js/assets.js?v=0.5.51"></script>
 
-  <script src="js/data.js?v=0.5.7"></script>
+  <script src="js/data.js?v=0.5.51"></script>
 
-  <script src="js/engine.js?v=0.5.7"></script>
+  <script src="js/engine.js?v=0.5.51"></script>
 
-  <script src="js/farm.js?v=0.5.7"></script>
+  <script src="js/farm.js?v=0.5.51"></script>
 
-  <script src="js/player.js?v=0.5.7"></script>
+  <script src="js/player.js?v=0.5.51"></script>
 
-  <script src="js/economy.js?v=0.5.7"></script>
+  <script src="js/economy.js?v=0.5.51"></script>
 
-  <script src="js/juice.js?v=0.5.7"></script>
+  <script src="js/juice.js?v=0.5.51"></script>
 
-  <script src="js/quest.js?v=0.5.7"></script>
+  <script src="js/quest.js?v=0.5.51"></script>
 
-  <script src="js/ui.js?v=0.5.7"></script>
+  <script src="js/ui.js?v=0.5.51"></script>
 
-  <script src="js/ui-effects.js?v=0.5.7"></script>
+  <script src="js/ui-effects.js?v=0.5.51"></script>
 
-  <script src="js/ui-snow.js?v=0.5.7"></script>
+  <script src="js/ui-snow.js?v=0.5.51"></script>
 
-  <script src="js/ui-autumn.js?v=0.5.7"></script>
+  <script src="js/ui-autumn.js?v=0.5.51"></script>
 
-  <script src="js/ui-weather.js?v=0.5.7"></script>
+  <script src="js/ui-weather.js?v=0.5.51"></script>
 
-  <script src="js/ui-cache.js?v=0.5.7"></script>
+  <script src="js/ui-cache.js?v=0.5.51"></script>
 
-  <script src="js/ui-scene.js?v=0.5.7"></script>
+  <script src="js/ui-scene.js?v=0.5.51"></script>
 
-  <script src="js/ui-quest.js?v=0.5.7"></script>
+  <script src="js/ui-quest.js?v=0.5.51"></script>
 
-  <script src="js/inventory.js?v=0.5.7"></script>
+  <script src="js/inventory.js?v=0.5.51"></script>
 
-  <script src="js/shop.js?v=0.5.7"></script>
+  <script src="js/shop.js?v=0.5.51"></script>
 
-  <script src="js/treefarm.js?v=0.5.7"></script>
+  <script src="js/treefarm.js?v=0.5.51"></script>
 
-  <script src="js/savegame.js?v=0.5.7"></script>
+  <script src="js/savegame.js?v=0.5.51"></script>
 
-  <script src="js/main.js?v=0.5.7"></script>
+  <script src="js/main.js?v=0.5.51"></script>
 
 </body>
 
