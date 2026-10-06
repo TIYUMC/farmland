@@ -201,6 +201,15 @@
     if (selSaveSlot) selSaveSlot.style.backgroundImage = '';
     if (slotPanel && typeof ASSETS !== 'undefined' && ASSETS.registry['enchantment'])
       slotPanel.style.backgroundImage = `url(${ASSETS.registry['enchantment']})`;
+    // 0.6.5：贴图只贴居中卡片 #confirm-card（不是全屏遮罩 overlay），同款手法运行时注入（无则跳过、卡片纯深蓝兜底）
+    const confirmCard = document.getElementById('confirm-card');
+    if (confirmCard && typeof ASSETS !== 'undefined' && ASSETS.registry['enchantment'])
+      confirmCard.style.backgroundImage = `url(${ASSETS.registry['enchantment']})`;
+    // 0.6.5：是/否按钮绑定（静态 DOM 在 index.html，挂一次无累积泄漏）
+    const confirmYes = document.getElementById('confirm-yes');
+    const confirmNo = document.getElementById('confirm-no');
+    if (confirmYes) confirmYes.addEventListener('click', function () { _confirmResolve(true); });
+    if (confirmNo) confirmNo.addEventListener('click', function () { _confirmResolve(false); });
     if (slotBtn && slotPanel && selSaveSlot) {
       // 按钮 click → toggle 浮层（none/block）
       slotBtn.addEventListener('click', function () {
@@ -218,7 +227,8 @@
         if (opt.dataset.value === '') return;   // 占位项「选择存档…」不进游戏（与原生默认项一致）
         const N = parseInt(opt.dataset.value, 10);
         if (isNaN(N) || !SaveGame.hasSave(N)) {
-          if (confirm('存档 ' + N + ' 是空的，将以此槽开新游戏，继续？')) _startNewGame(N);
+          // 0.6.5：原生 confirm 改自定义弹窗（微信/移动内嵌浏览器屏蔽原生 confirm）
+          _showConfirm('存档 ' + N + ' 是空的，将以此槽开新游戏，继续？', function () { _startNewGame(N); }, function () {});
         } else {
           _continueGame(N);
         }
@@ -408,6 +418,39 @@
   var _titleTransitionOut = null;
   var _closeNotice = null;   // 0.6.2：上次关页存档结果标记（init 读即清、_hideTitle 提示）；必须 IIFE 顶层，init 内声明则 _hideTitle 读不到
 
+  // 0.6.5：全局自定义 confirm 弹窗（微信/移动内嵌浏览器屏蔽原生 confirm，全走自绘 DOM；#confirm-overlay+#confirm-card 静态在 index.html，贴图只贴居中卡片）。
+  // _confirmBusy 防重入（弹窗显示期间再次调用直接忽略）；overlay 不存在时兜底直接执行 onYes（不阻断流程）。
+  // 显隐走 CSS .show 类（#confirm-overlay 默认 display:none，.show 时 flex 居中）。
+  var _confirmBusy = false;
+  var _confirmCb = null;
+  function _showConfirm(msg, onYes, onNo) {
+    var ov = document.getElementById('confirm-overlay');
+    if (!ov) { if (onYes) onYes(); return; }
+    if (_confirmBusy) return;
+    _confirmBusy = true;
+    var m = document.getElementById('confirm-msg');
+    if (m) m.textContent = msg;
+    _confirmCb = { onYes: onYes, onNo: onNo };
+    ov.classList.add('show');
+  }
+  function _confirmResolve(res) {
+    var ov = document.getElementById('confirm-overlay');
+    var cb = _confirmCb; _confirmCb = null;
+    if (ov) ov.classList.remove('show');
+    _confirmBusy = false;
+    if (res) { if (cb && cb.onYes) cb.onYes(); }
+    else { if (cb && cb.onNo) cb.onNo(); }
+  }
+  function _askOverride(full, idx, cb) {
+    // 三槽全满 → 依次问「覆盖槽 full[idx]？」：是→cb(full[idx])；否→递归下一槽；全取消→cb(null)
+    if (idx >= full.length) { if (cb) cb(null); return; }
+    _showConfirm('三个存档槽已满，要覆盖槽 ' + full[idx] + ' 吗？', function () {
+      if (cb) cb(full[idx]);
+    }, function () {
+      _askOverride(full, idx + 1, cb);
+    });
+  }
+
   function _addTitleTransition() {
     var ts = document.getElementById('title-screen');
     if (!ts) return;
@@ -453,12 +496,11 @@
         if (!SaveGame.hasSave(n)) { target = n; break; }
       }
       if (!target) {
-        // 三槽全满：依次确认覆盖
-        var full = [1, 2, 3];
-        for (var k = 0; k < full.length; k++) {
-          if (confirm('三个存档槽已满，要覆盖槽 ' + full[k] + ' 吗？')) { target = full[k]; break; }
-        }
-        if (!target) return;   // 全取消：不开局，留在标题页
+        // 0.6.5：三槽全满 → 依次自定义弹窗确认覆盖（微信/移动屏蔽原生 confirm）；全取消 res=null 留标题页
+        _askOverride([1, 2, 3], 0, function (res) {
+          if (res) _startNewGame(res);
+        });
+        return;
       }
     }
     SaveGame.currentSlot = target;   // 新游戏落该槽（后续无参自动存/手动存/关页静默存都落它）
