@@ -65,11 +65,37 @@
       if (typeof SaveGame === 'undefined' || !SaveGame.save) return;
       var ts = document.getElementById('title-screen');
       var onTitle = !!ts && ts.classList && ts.classList.contains('overlay-visible');
-      if (onTitle) return;   // 标题界面：未进游戏，不覆写存档
-      SaveGame.save();
+      if (onTitle) return;   // 标题界面：未进游戏，不覆写存档（也不写关闭标记 → 下次进入无提示）
+      // 0.6.2：记录本次关页存档结果到 localStorage 标记，进游戏时一次性提示（关页瞬间无法展示任何提示）。
+      // 双 try/catch：save 与写标记都可能因存储不可用抛错，关页路径绝不 crash。
+      var ok = false;
+      try { ok = SaveGame.save(); } catch (e) { ok = false; }
+      try {
+        window.localStorage.setItem('stardew_save_last_close', JSON.stringify({
+          ts: Date.now(), ok: ok, slot: SaveGame.currentSlot
+        }));
+      } catch (e) { /* localStorage 本身不可用：静默，不影响关闭 */ }
     };
     window.addEventListener('pagehide', _saveOnHide);
     window.addEventListener('beforeunload', _saveOnHide);
+
+    // 0.6.3：关页弹原生「要离开」确认框。注册在 _saveOnHide 之后 → 先静默存档（幂等写同槽）再弹框：
+    // 点「留在页面上」→ 回游戏、存档已写入零影响；点「离开」→ 正常关闭。标题界面不弹（判据与 _saveOnHide 同款），
+    // 避免开页直接关也骚扰。已知局限：原生框文案浏览器写死、无「存/不存」语义；iOS 无框但静默存档照走（pagehide 未动）。
+    window.addEventListener('beforeunload', function (e) {
+      var ts = document.getElementById('title-screen');
+      var onTitle = !!ts && ts.classList && ts.classList.contains('overlay-visible');
+      if (onTitle) return;
+      e.preventDefault();
+      e.returnValue = '';   // Chrome 要求 returnValue 非空才弹框
+    });
+
+    // 0.6.2：读上次关页存档结果标记（一次性语义，读即清）；此时可能还盖着标题页，提示延后到 _hideTitle
+    try {
+      var raw = window.localStorage.getItem('stardew_save_last_close');
+      if (raw) _closeNotice = JSON.parse(raw);
+      window.localStorage.removeItem('stardew_save_last_close');
+    } catch (e) { /* 标记损坏/存储不可用忽略 */ }
 
     // 开始首日
     Engine.start();
@@ -380,6 +406,7 @@
   }
 
   var _titleTransitionOut = null;
+  var _closeNotice = null;   // 0.6.2：上次关页存档结果标记（init 读即清、_hideTitle 提示）；必须 IIFE 顶层，init 内声明则 _hideTitle 读不到
 
   function _addTitleTransition() {
     var ts = document.getElementById('title-screen');
@@ -399,6 +426,22 @@
     var ts = document.getElementById('title-screen');
     if (ts) ts.className = 'overlay-hidden';
     _stopTitleParticles();
+    // 0.6.2：标题隐藏后（HUD 确定可见）一次性提示「上次关闭时是否已自动存档」。
+    // 只告知、不做任何操作——失败也不自动重试（避免进游戏瞬间写旧态，语义不清）；文案不带 emoji。
+    if (_closeNotice) {
+      if (typeof UI !== 'undefined' && UI.showStatus) {
+        if (_closeNotice.ok) {
+          var d = new Date(_closeNotice.ts);
+          UI.showStatus('上次关闭时已自动存档（槽 ' + (_closeNotice.slot || 1) +
+            ' · ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+            (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' +
+            (d.getMinutes() < 10 ? '0' : '') + d.getMinutes() + '）', 3000);
+        } else {
+          UI.showStatus('上次关闭时自动存档失败，进度可能未保存，请手动点「存档」', 4000);
+        }
+      }
+      _closeNotice = null;   // 已提示即清（标记本身在 init 读时已 removeItem，这里是兜底）
+    }
   }
   function _startNewGame(requestedSlot) {
     // 落槽规则（0.5.8）：从标题页点槽位列表进来的带 requestedSlot（该槽为空、confirm 过才进来，直接落）；
