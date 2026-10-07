@@ -1,5 +1,15 @@
 /**
  * ui-cache.js — 从 ui.js 拆分
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - _ensureFarmCache
+ *   - _renderCell
+ *   - _renderVegCell
+ *   - _rebuildFarmCache
+ *   - _rebuildGrassBase
+ *   - _buildVegCache
+ *
  */
 
 const _cacheMethods = {

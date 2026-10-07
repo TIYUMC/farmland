@@ -1,5 +1,21 @@
 /**
  * ui-autumn.js — 从 ui.js 拆分
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - _isAutumn
+ *   - _isWinter
+ *   - _autumnLeafColors
+ *   - _leafTinted
+ *   - _spawnLeaf
+ *   - _updateLeaves
+ *   - _drawLeaves
+ *   - _litterTinted
+ *   - _ensureLitterGrid
+ *   - _drawLitterCell
+ *   - _spawnDailyLitter
+ *   - _newDrop
+ *
  */
 
 const _autumnMethods = {

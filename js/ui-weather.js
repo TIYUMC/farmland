@@ -1,5 +1,31 @@
 /**
  * ui-weather.js — 从 ui.js 拆分
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - _drawRain
+ *   - _buildRainSprite
+ *   - _totalGameHours
+ *   - _randRange
+ *   - _randRainDurDays
+ *   - _randGapDays
+ *   - _updateWeather
+ *   - _nightAlpha
+ *   - _drawNightOverlay
+ *   - _rainWaterFields
+ *   - _clearWeather
+ *   - _startRain
+ *   - _startRainAndWater
+ *   - _syncIsRaining
+ *   - _switchWeatherPhase
+ *   - _setWeatherPhase
+ *   - _startWind
+ *   - _randWindDurDays
+ *   - _newWindStreak
+ *   - _updateWind
+ *   - _drawWind
+ *   - _toggleRain
+ *
  */
 
 const _weatherMethods = {
@@ -20,7 +46,7 @@ const _weatherMethods = {
 
     }
 
-    // 暴雨（0.5.15）：浓段雨滴 ×2 顶置；降级回普通雨时裁回 n（不然下场普通雨继续画双份雨丝）
+    // 暴雨：浓段雨滴 ×2 顶置；降级回普通雨时裁回 n（不然下场普通雨继续画双份雨丝）
     if (this._rainLevel === 2) {
       while (this._rainDrops.length < n * 2) this._rainDrops.push(this._newDrop(W, H, true));
     } else if (this._rainDrops.length > n) {
@@ -33,7 +59,7 @@ const _weatherMethods = {
 
     ctx.fillRect(-8, -8, W + 16, H + 16);
 
-    // 雷闪排程（0.5.15 文档 A 案，纯屏闪白、无音频；0.5.16 观感加强：6 帧≈100ms 肉眼清晰闪，间隔 0.8~3s 浓段内必闪 1~3 次）
+    // 雷闪排程（文档 A 案，纯屏闪白、无音频； 观感加强：6 帧≈100ms 肉眼清晰闪，间隔 0.8~3s 浓段内必闪 1~3 次）
     // 实际画白框在 _drawNightOverlay（要画在夜蒙层之上）
     if (this._rainLevel === 2) {
       this._stormFlashCd -= dt;
@@ -196,13 +222,13 @@ const _weatherMethods = {
 
     const now = this._totalGameHours();
 
-    // 暴雨（0.5.15）：浓段进出（仅非冬季的雨；冬季 rain 走飘雪路径不进浓段）
+    // 暴雨：浓段进出（仅非冬季的雨；冬季 rain 走飘雪路径不进浓段）
     if (this._weatherPhase === 'rain' && !this._isWinter()) {
       if (this._stormScheduledAtH != null && now >= this._stormScheduledAtH && this._rainLevel === 1) this._rainLevel = 2;
       if (this._rainLevel === 2 && this._stormEndH != null && now >= this._stormEndH) this._rainLevel = 1;
     }
 
-    // 暴雪（0.5.15）：进出（仅冬季的雪；与暴雨双 guard 互斥——非冬季暴雨、冬季暴雪）
+    // 暴雪：进出（仅冬季的雪；与暴雨双 guard 互斥——非冬季暴雨、冬季暴雪）
     if (this._weatherPhase === 'rain' && this._isWinter()) {
       if (this._blizzardScheduledAtH != null && now >= this._blizzardScheduledAtH && this._snowLevel === 1) this._snowLevel = 2;
       if (this._snowLevel === 2 && this._blizzardEndH != null && now >= this._blizzardEndH) this._snowLevel = 1;
@@ -262,9 +288,9 @@ const _weatherMethods = {
 
     ctx.fillRect(-8, -8, W + 16, H + 16);          // 略大于画布，兼容屏幕震动位移
 
-    // 雷闪（0.5.15，文档 A 案）：浓段排程的白框画在夜蒙层之上，1~2 帧白、无音频
+    // 雷闪（文档 A 案）：浓段排程的白框画在夜蒙层之上，1~2 帧白、无音频
     if (this._stormFlashLeft > 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.45)';   // 0.5.16：闪白 0.25→0.45，暴雨雷闪更醒目
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';   // 闪白 0.25→0.45，暴雨雷闪更醒目
       ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       this._stormFlashLeft--;
     }
@@ -311,15 +337,15 @@ const _weatherMethods = {
 
     this._weatherTargetH = now + this._randGapDays() * this._dayHours;
 
-    // 暴雨（0.5.15）：雨停清场时重置浓段状态，防上一场残留
+    // 暴雨：雨停清场时重置浓段状态，防上一场残留
     this._rainLevel = 1;
     this._stormScheduledAtH = null;
     this._stormEndH = null;
 
-    // 大风散场（0.5.40）：不清池，启动淡出倒数
+    // 大风散场：不清池，启动淡出倒数
     if (this._windStreaks && this._windStreaks.length) this._windFadeLeft = ((typeof DATA !== 'undefined' && DATA.WEATHER) ? DATA.WEATHER.windFadeSec : 0.6);
 
-    // 暴雪（0.5.15）：雪停清场时重置暴雪段状态
+    // 暴雪：雪停清场时重置暴雪段状态
     this._snowLevel = 1;
     this._blizzardScheduledAtH = null;
     this._blizzardEndH = null;
@@ -338,7 +364,7 @@ const _weatherMethods = {
     const durH = this._randRainDurDays() * this._dayHours;
     this._weatherTargetH = now + durH;
 
-    // 暴雨（0.5.15）：每场雨重置全部浓段状态；非冬季 50% 概率预先排一个浓段
+    // 暴雨：每场雨重置全部浓段状态；非冬季 50% 概率预先排一个浓段
     // 浓段时刻 = 本雨场的 30%~70%，时长 0.3~0.8 天，两个 Math.min 钳死绝不越过雨场终点
     this._rainLevel = 1;
     this._stormScheduledAtH = null;
@@ -351,7 +377,7 @@ const _weatherMethods = {
       this._stormEndH = Math.min(at + this._randRange(0.3, 0.8) * this._dayHours, this._weatherTargetH);
     }
 
-    // 暴雪（0.5.15）：冬季雪场 50% 概率排一个暴雪段，公式逐项同款、字段换 blizzard
+    // 暴雪：冬季雪场 50% 概率排一个暴雪段，公式逐项同款、字段换 blizzard
     this._snowLevel = 1;
     this._blizzardScheduledAtH = null;
     this._blizzardEndH = null;
@@ -400,14 +426,14 @@ const _weatherMethods = {
 
     } else {
 
-      // 晴天空档到期派发（0.5.46 删大雾）：冬季全雨（飘雪，保持现行为）；非冬季——
+      // 晴天空档到期派发（删大雾）：冬季全雨（飘雪，保持现行为）；非冬季——
       // 35% 大风 / 20% 延长晴天（no-op，不派发只推后晴天空档）/ 余量 45% 全给雨
       if (this._isWinter()) {
         this._startRainAndWater(now);
       } else {
         const r = Math.random();
         if (r < 0.35) this._startWind(now);
-        else if (r < 0.55) this._weatherTargetH = now + this._randGapDays() * this._dayHours;   // 0.5.46 延长晴天（no-op：不派发、推后倒计时，下次到点重新派发）
+        else if (r < 0.55) this._weatherTargetH = now + this._randGapDays() * this._dayHours;   // 延长晴天（no-op：不派发、推后倒计时，下次到点重新派发）
         else this._startRainAndWater(now);
       }
 
@@ -443,7 +469,7 @@ const _weatherMethods = {
 
 
 
-  /** 纯视觉阵风（0.5.10）：起一场大风。方向开风时随机定一次（1=向右吹，-1=向左吹），风停前不变。
+ /** 纯视觉阵风：起一场大风。方向开风时随机定一次（1=向右吹，-1=向左吹），风停前不变。
    *  不影响玩法（isRaining 保持 false → 雨/雪/涟漪/自动浇灌全不触发）。*/
   _startWind(now) {
 
@@ -453,7 +479,7 @@ const _weatherMethods = {
 
     this._windDir = Math.random() < 0.5 ? 1 : -1;   // 1=向右，-1=向左（镜像）
 
-    if (!this._windStreaks || !this._windStreaks.length) this._windFadeLeft = 0;   // 散场淡出复位（0.5.41：仅池空才复位，散场淡出没走完就起新天气时保留旧淡出、不破坏倒数）
+    if (!this._windStreaks || !this._windStreaks.length) this._windFadeLeft = 0;   // 散场淡出复位（仅池空才复位，散场淡出没走完就起新天气时保留旧淡出、不破坏倒数）
 
     this._syncIsRaining();
 
@@ -537,7 +563,7 @@ const _weatherMethods = {
 
     if (!arr || !arr.length) return;
 
-    // 散场淡出（0.5.40）：非 wind 期按剩余倒数比例逐帧降 alpha；wind 期恒 1
+    // 散场淡出：非 wind 期按剩余倒数比例逐帧降 alpha；wind 期恒 1
     const fadeK = (this._weatherPhase === 'wind') ? 1 : Math.max(0, (this._windFadeLeft || 0) / (((typeof DATA !== 'undefined' && DATA.WEATHER) ? DATA.WEATHER.windFadeSec : 0.6)));
 
     const flip = (this._windDir === -1);

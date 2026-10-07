@@ -102,12 +102,12 @@ UI._makeSlot = function(slot, index, isHotbar, isSelected) {
   el.className = 'inv-slot';
   el.dataset.index = index;
 
-  // 快捷栏选中格：0.5.27 起改用伪元素承载（.ff-sel::before，inset:-15% 外扩 30% 且零裁切），
+  // 快捷栏选中格：改用伪元素承载（.ff-sel::before，inset:-15% 外扩 30% 且零裁切），
   // CSS 变量 --focus-frame 由 _ensureFocusFrame 懒注入（取不到图就不加类，宁缺毋滥）
   if (isHotbar && isSelected) {
     if (this._ensureFocusFrame()) { el.classList.add('ff-sel'); el.style.zIndex = 20; }
   }
-  // 主背包选中格：inv-sel 保留 inset 黄内描边；外大框走 ff-sel 伪元素（0.5.27 口径，
+  // 主背包选中格：inv-sel 保留 inset 黄内描边；外大框走 ff-sel 伪元素（口径，
   // 「外大框压内细框」双层叠层；zIndex=20 防溢出被 z=calc(10-idx) 的邻居盖边）
   if (!isHotbar && isSelected) {
     el.classList.add('inv-sel');
@@ -138,7 +138,7 @@ UI._makeSlot = function(slot, index, isHotbar, isSelected) {
 };
 
 /**
- * 懒注入 --focus-frame CSS 变量（0.5.27 伪元素承载选中框）
+ * 懒注入 --focus-frame CSS 变量（伪元素承载选中框）
  * 取到 focus_frame data URL 才注入并返回 true；取不到返回 false（调用方据此决定不加 .ff-sel，宁缺毋滥）。
  * 幂等：已注入过直接返回 true。项目惯例 style.css 零处内联 data: 图，贴图一律 JS 喂。
  */
@@ -832,7 +832,7 @@ UI._renderBottomHotbar = function() {
     }
     const bgKey = (i === Player._hotbarSel) ? 'focus_frame' : 'gamemode_switcher_slot';
     const bgSrc = this._assetURL(bgKey);
-    // 0.5.28：选中格框只走 ff-sel 伪元素一条通道；未选中格保留 gamemode_switcher_slot 底纹
+    // 选中格框只走 ff-sel 伪元素一条通道；未选中格保留 gamemode_switcher_slot 底纹
     if (bgKey !== 'focus_frame' && bgSrc) cell.style.backgroundImage = 'url("' + bgSrc + '")';
     if (bgKey === 'focus_frame' && this._ensureFocusFrame()) cell.classList.add('ff-sel');
     if (slot) {

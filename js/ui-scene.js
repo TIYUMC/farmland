@@ -1,5 +1,45 @@
 /**
  * ui-scene.js — 从 ui.js 拆分
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - _renderSceneToCanvas
+ *   - _renderTransition
+ *   - _setTextCenter
+ *   - _drawCornerBadge
+ *   - _drawBreathingBorder
+ *   - _drawWaterOverlay
+ *   - _drawFarmlandOverlay
+ *   - _renderStaticScene
+ *   - _drawGrassBaseLayer
+ *   - _drawGrassTopLayer
+ *   - _grassVariation
+ *   - _getGrassBaked
+ *   - _getGrassLayer
+ *   - _drawGrassOutline
+ *   - _getGrassRingCrop
+ *   - _ensureGrassOutline
+ *   - _bakeCropBody
+ *   - _drawGrassGroundCell
+ *   - _drawBareSoil
+ *   - _drawImageCell
+ *   - _fillCell
+ *   - _drawPaddedAsset
+ *   - _drawWoodOrFill
+ *   - _drawShadowEllipse
+ *   - _drawCropCell
+ *   - _drawFlowerCell
+ *   - _forEachFarmCell
+ *   - _renderTreeFarmScene
+ *   - _winterFrosted
+ *   - _updateTreeFrost
+ *   - _treeFrostAt
+ *   - _treeCrownSize
+ *   - _treeSaplingSize
+ *   - _treeSaplingFlip
+ *   - _canopySprite
+ *   - _drawTreeEntity
+ *
  */
 
 const _sceneMethods = {
@@ -79,7 +119,7 @@ const _sceneMethods = {
       this._vegCache = null;                              // 切场：失效旧 vegCache，防止跨场景残留
 
       const cs = this.cellSize;
-      const cx = this.scene === 'farm' ? cs : this.canvas.width - cs;   // 0.5.13：尘爆在新场景按钮那一侧的画布边缘（farm=左缘、treeFarm=右缘）一格内
+      const cx = this.scene === 'farm' ? cs : this.canvas.width - cs;   // 尘爆在新场景按钮那一侧的画布边缘（farm=左缘、treeFarm=右缘）一格内
       const cy = this.canvas.height / 2;
 
       this._updateNavBtn();
@@ -424,7 +464,7 @@ const _sceneMethods = {
 
     const C = DATA.FARM.COLS;
 
-    // 雪埋草：草基部截断面积 = 雪占格面积 × 30%（0.5.50 连续公式，替代旧二值 0.25）；满格雪=截 30% 格。截断的是草叶基部（被雪盖住那段）。
+    // 雪埋草：草基部截断面积 = 雪占格面积 × 30%（连续公式，替代旧二值 0.25）；满格雪=截 30% 格。截断的是草叶基部（被雪盖住那段）。
 
     // 仅「雪上植被层(_vegCache) / 草颤层」需要此截断（让雪埋住草基）；静态层(_farmCache)是雪融化后露出的底，
 
@@ -432,7 +472,7 @@ const _sceneMethods = {
 
     const cellLeft = c * cs, cellTop = r * cs;
 
-    // 0.5.50：取该格雪片像素尺寸 ps（无雪=0）；量化面积比替代旧「有无雪二值」。
+    // 取该格雪片像素尺寸 ps（无雪=0）；量化面积比替代旧「有无雪二值」。
     let ps = 0;
 
     if (snowTruncate && this._snowGround) {
@@ -674,7 +714,7 @@ const _sceneMethods = {
     // 第1层：合并外轮廓 floor（全图 20% 淡白）
     ctx.globalAlpha = 0.20;
     ctx.drawImage(out.canvas, 0, 0);
-    // 0.5.19 草颤旋转跟随：预建「正在颤的格 → r,c」映射，追光层对颤格与草身同枢轴（格底中心+v.ox/oy）
+    // 草颤旋转跟随：预建「正在颤的格 → r,c」映射，追光层对颤格与草身同枢轴（格底中心+v.ox/oy）
     // 同角度（sin(age*18)*amp*decay，ui-effects.js:119 同式）旋转裁片。映射只在有草颤时建（无颤零开销）。
     let shakeMap = null;
     if (this._grassShakes && this._grassShakes.length) {
@@ -738,11 +778,11 @@ const _sceneMethods = {
   _ensureGrassOutline() {
     const cs = this.cellSize;
     const tint = this._shade(this._seasonColorAt().grass, 30);
-    // 0.5.50：雪签名扩量化桶（"r,c,bucket"）——同公式量化防 veg 层/描边两层不一致；
+    // 雪签名扩量化桶（"r,c,bucket"）——同公式量化防 veg 层/描边两层不一致；
     // 雪长大期间每格最多 6 次重烘（0~6 桶），key 含桶号。qstep 提到方法级，供下方 A 烘焙截断段复用。
     const qstep = Math.max(1, cs / 6);
     const snowSig = this._snowSig();   // 单一权威源 UI._snowSig()：与 veg 层 _syncSnowCanvas 失效同口径，防三处漂移
-    // 0.5.19：key 只保留 7 个元素（scene / tint / cs / snowSig / _grassDataRev / 画布宽高 / 年-季-日）。
+    // key 只保留 7 个元素（scene / tint / cs / snowSig / _grassDataRev / 画布宽高 / 年-季-日）。
     // 描边永远中性烘焙（A 段 shakeAngle 恒空、a.rotate 恒 0），颤中 key 完全稳定零重建；
     // 草颤跟随由 _drawGrassOutline 追光层对颤格与草身同枢轴（格底中心）同角度旋转裁片实时完成。
     const key = [this.scene, tint, cs, snowSig, this._grassDataRev || 0,
@@ -799,7 +839,7 @@ const _sceneMethods = {
     }
     const treeFarm = this.scene === 'treeFarm';
     const centroids = [];
-    // 0.5.50：snowSet 改 snowMap（"r,c,bucket" → snowMap[r+','+c]=bucket），供截断段查桶算同公式
+    // snowSet 改 snowMap（"r,c,bucket" → snowMap[r+','+c]=bucket），供截断段查桶算同公式
     const snowMap = snowSig ? (() => {
       const m = {};
       for (const e of snowSig.split(':').pop().split('|').filter(Boolean)) {
@@ -808,7 +848,7 @@ const _sceneMethods = {
       }
       return m;
     })() : null;
-    // 0.5.18：永远中性烘焙（不烘入草颤角度）——颤动改由 _drawGrassOutline 追光层 ±2px dx 实时跟随。
+    // 永远中性烘焙（不烘入草颤角度）——颤动改由 _drawGrassOutline 追光层 ±2px dx 实时跟随。
     // 烘角进 A 的问题：#sh key 只在沿上重烘，颤中冻住；且烘入半透明角度像素会被 B 擦不净 → 内部发虚。
     const shakeAngle = {};
     for (let r = 0; r < DATA.FARM.ROWS; r++) {
@@ -906,7 +946,7 @@ const _sceneMethods = {
         const layer = (gstate === 1) ? layerG : layerD;
         if (flower === 0 && !layer) continue;   // 草格需草层；花格不依赖草层（贴图/纯色兜底）
         a.save();
-        // 0.5.50：雪截断 clip：草/花共用，截断面积 = 雪占格面积 × 30%（量化桶，与 veg 层 _drawGrassTopLayer 同公式）
+        // 雪截断 clip：草/花共用，截断面积 = 雪占格面积 × 30%（量化桶，与 veg 层 _drawGrassTopLayer 同公式）
         const b = snowMap ? (snowMap[r + ',' + c] || 0) : 0;
         const szQ = b ? b * qstep : 0;
         const trunc = szQ ? 0.3 * (szQ / cs) * (szQ / cs) : 0;
@@ -996,7 +1036,7 @@ const _sceneMethods = {
         }
       }
     }
-    // 0.5.51：擦掉「有雪草/花格」截断面（草身被雪截掉根部的水平缝）被 B 段 8 向外扩描出的 1px 白带。
+    // 擦掉「有雪草/花格」截断面（草身被雪截掉根部的水平缝）被 B 段 8 向外扩描出的 1px 白带。
     // 保留草尖上/左/右外侧白环，只去横向接缝白线，让雪面那端成干净截断（与 veg 层一致、无双线脱节）。
     // 逐格截断值与 A 段（_drawGrassTopLayer / 描边 A 烘焙）完全同式；只对「草/花且有雪」格擦——
     // 作物/耕地/树冠不截草身，擦了会误伤作物植株白边（§1.4 作物格 L995 守卫不动）。
@@ -1015,7 +1055,7 @@ const _sceneMethods = {
           }
           if ((gstate !== 1 && gstate !== 2) && flower === 0) continue;   // 非草/花格不擦
           const szQ = b * qstep;
-          const trunc = 0.3 * (szQ / cs) * (szQ / cs);   // 与 A 段同式（0.5.50 的 30% 规则）
+          const trunc = 0.3 * (szQ / cs) * (szQ / cs);   // 与 A 段同式（的 30% 规则）
           if (!(trunc > 0)) continue;
           const seamY = r * cs + Math.round(cs * (1 - trunc));
           o.fillRect(c * cs, seamY, cs, 2);   // 擦接缝白带 [seamY, seamY+1] 共 2px（含 1px 抗扩余量）

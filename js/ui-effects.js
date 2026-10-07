@@ -1,5 +1,17 @@
 /**
  * ui-effects.js — 从 ui.js 拆分
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - _drawEffects
+ *   - _spawnRipple
+ *   - _shakeGrass
+ *   - _drawGrassShakes
+ *   - _drawRipples
+ *   - _spawnBurst
+ *   - _floatText
+ *   - _shakeIt
+ *
  */
 
 const _effectsMethods = {

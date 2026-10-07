@@ -17,13 +17,31 @@
  *   主页面已无「读档」按钮（已移除）；标题页为 3 槽存档列表（mc-btn 同款按钮），
  *   有档槽点下直接读入该槽、空槽点下 confirm 后开新游戏落该槽，见 main.js _renderTitleSlots。
  *
- * 槽位化（0.5.8）：
+ * 槽位化：
  *   槽 1 沿用老 key 'stardew_save_v1'（老玩家存档原地识别，不迁移不丢）；
  *   槽 2/3 用新 key。save/load/hasSave/getSummary 均参数化 slot、缺省取 currentSlot，
  *   故自动存（onDayEnd）/手动存/关页静默存（均无参调用）自动落到"正在玩的那份档"。
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - STORAGE_KEY
+ *   - SLOT_KEYS
+ *   - currentSlot
+ *   - save
+ *   - saveAndSleep
+ *   - load
+ *   - hasSave
+ *   - getSummary
+ *   - listSlots
+ *   - _serialize
+ *   - _deserialize
+ *
  */
 
 const SaveGame = {
+  // ─────────────────────────────────────────────
+  // 槽位常量 / 当前槽
+  // ─────────────────────────────────────────────
   STORAGE_KEY: 'stardew_save_v1',
   /** 槽位 key 表：槽 1 沿用老 key（不迁移），槽 2/3 新 key */
   SLOT_KEYS: { 1: 'stardew_save_v1', 2: 'stardew_save_v2_slot', 3: 'stardew_save_v3_slot' },
@@ -106,6 +124,9 @@ const SaveGame = {
     return !!key && !!window.localStorage.getItem(key);
   },
 
+  // ─────────────────────────────────────────────
+  // 摘要 / 槽列表
+  // ─────────────────────────────────────────────
   /**
    * 返回存档摘要（"秋3日 第1年 · 10/3"，末尾为 ts 转本地日期短格式）。
    * 原供读档确认弹窗使用，该弹窗已移除；现供标题页槽位列表显示（listSlots 调用）。

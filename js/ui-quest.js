@@ -1,5 +1,15 @@
 /**
  * ui-quest.js — 从 ui.js 拆分
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - openQuest
+ *   - closeQuest
+ *   - _renderQuest
+ *   - _renderQuestTabs
+ *   - showAchievement
+ *   - _pumpAchievementQueue
+ *
  */
 
 const _questMethods = {

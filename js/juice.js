@@ -1,7 +1,14 @@
-/* js/juice.js — 轻量「游戏手感」(game-feel) 增强库：缓动 / 粒子 / 漂浮文字 / 屏幕震动。
- * 纯 Vanilla、零依赖、无副作用；挂载全局 Juice，供各 UI 模块调用。
- * 设计：所有动画基于 dt(秒) 推进，与帧率无关；状态均挂在调用方实例上，不污染全局。
- */
+/**
+* juice.js — 轻量「游戏手感」(game-feel) 增强库（缓动 / 粒子 / 漂浮文字 / 屏幕震动）
+* 职责：纯 Vanilla、零依赖、无副作用的动画手感工具，IIFE 内定义后挂全局 Juice，供各 UI 模块调用；所有动画基于 dt(秒) 推进、帧率无关，状态挂在调用方实例上。
+* 生效/影子：独立全局对象 Juice，无白名单覆盖关系。
+* 方法清单（挂载到 Juice）：
+*   - ease（缓动函数集：linear / inOutQuad / outCubic / outQuart / outBack）
+*   - lerp、clamp、rand
+*   - ParticleSystem（粒子系统类）
+*   - Floaters（漂浮文字类）
+*   - Shake（屏幕震动类）
+*/
 (function (root) {
   'use strict';
 

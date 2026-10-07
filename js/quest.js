@@ -9,6 +9,28 @@
  *   Player.addWood           → Quest.trigger('wood', amount)
  *   Player.addMoney          → Quest.trigger('earn', amount)
  *   Economy.buyTool         → Quest.trigger('ownTool', toolId)
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - _done
+ *   - reset
+ *   - trigger
+ *   - _evaluate
+ *   - _meets
+ *   - isDone
+ *   - _announce
+ *   - _gatewayMap
+ *   - _prereqIds
+ *   - _prereqMet
+ *   - _manualClaimable
+ *   - claim
+ *   - _grantReward
+ *   - _grantItem
+ *   - _hasItems
+ *   - _takeItems
+ *   - _itemCount
+ *   - _itemName
+ *
  */
 const Quest = {
   // 各事件累计次数 / 总量

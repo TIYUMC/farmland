@@ -1,6 +1,38 @@
 /**
  * main.js — 主入口
  * 初始化、启动循环、模块连接
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - init
+ *   - _onTitleVisibility
+ *   - _startTitleParticles
+ *   - spawnLoop
+ *   - loop
+ *   - _stopTitleParticles
+ *   - _showTitle
+ *   - _renderTitleSlots
+ *   - _animateTitleLetters
+ *   - _animateButtonsIn
+ *   - _spawnParticles
+ *   - _flashSave
+ *   - _showConfirm
+ *   - _confirmResolve
+ *   - _askOverride
+ *   - _addTitleTransition
+ *   - _hideTitle
+ *   - _startNewGame
+ *   - _continueGame
+ *   - _setToolbarIcons
+ *   - _setIconInner
+ *   - _setBtnIcon
+ *   - _setHudIcon
+ *   - _selectTool
+ *   - _jumpToSeason
+ *   - _addInventoryButton
+ *   - _toggleTreeFarm
+ *   - _swapIcon
+ *
  */
 (function () {
   'use strict';
@@ -182,22 +214,22 @@
     const questBtn = document.getElementById('btn-quest');
     if (questBtn) questBtn.addEventListener('click', () => UI.openQuest());
 
-    // 标题界面按钮绑定（0.5.9：「继续游戏」按钮已改为「存档选择下拉 + 进入游戏」）
+    // 标题界面按钮绑定（「继续游戏」按钮已改为「存档选择下拉 + 进入游戏」）
     const btnNewGame = document.getElementById('btn-new-game');
-    // 0.5.52：裸绑定 `_startNewGame` 会被 addEventListener 把 MouseEvent 当第 1 参传入，
+    // 裸绑定 `_startNewGame` 会被 addEventListener 把 MouseEvent 当第 1 参传入，
     // requestedSlot=事件对象（truthy）→ target=事件 → 落槽「空槽优先/三槽满 confirm」整段被跳过、
     // SaveGame.currentSlot 被置成事件对象（脏值）→ 后续所有无参 save() 走 SLOT_KEYS[事件]=undefined 静默失败。
     // 改箭头闭包不传参：requestedSlot=undefined → target=null → 空槽优先逻辑正常跑。
     if (btnNewGame) btnNewGame.addEventListener('click', function () { _startNewGame(); });
-    // 存档选择：0.5.24 自定义下拉（原生 <option> 弹层由浏览器自绘、无法设背景，改「按钮 + 浮层列表」）。
-    // 选中即进——有档槽 _continueGame(N)，空槽 confirm 后 _startNewGame(N)（0.5.22 口径，逻辑从原 change 监听体搬进面板项 click）。
+    // 存档选择： 自定义下拉（原生 <option> 弹层由浏览器自绘、无法设背景，改「按钮 + 浮层列表」）。
+    // 选中即进——有档槽 _continueGame(N)，空槽 confirm 后 _startNewGame(N)（口径，逻辑从原 change 监听体搬进面板项 click）。
     // #save-slot 原生 select 隐藏保留（作 value 兜底链路：面板项点选后写回 value，不删）。
     const selSaveSlot = document.getElementById('save-slot');
     const slotBtn = document.getElementById('save-slot-btn');
     const slotPanel = document.getElementById('save-slot-panel');
     const slotWrap = document.getElementById('save-slot-wrap');
-    // 0.5.24：浮层背景用素材库 enchantment 深蓝横幅（base64 运行时才有，跟 ui-quest.js R['enchantment'] 同款手法）。
-    // 0.5.23 曾给隐藏 select 装背景，现随 select 隐藏一并撤掉。
+    // 浮层背景用素材库 enchantment 深蓝横幅（base64 运行时才有，跟 ui-quest.js R['enchantment'] 同款手法）。
+    // 曾给隐藏 select 装背景，现随 select 隐藏一并撤掉。
     if (selSaveSlot) selSaveSlot.style.backgroundImage = '';
     if (slotPanel && typeof ASSETS !== 'undefined' && ASSETS.registry['enchantment'])
       slotPanel.style.backgroundImage = `url(${ASSETS.registry['enchantment']})`;
@@ -248,7 +280,7 @@
   var _titleParticleSystem = null;
   var _titleCanvas = null;
   var _titleCtx = null;
-  // 0.5.20：visibilitychange 监听器泄漏修复。
+  // visibilitychange 监听器泄漏修复。
   // 句柄提升到模块级：_startTitleParticles 只注册一次（_titleVisHandler 非空则跳过），
   // _stopTitleParticles 时 removeEventListener，杜绝「每次开店/切标题页都 addEventListener、永不 remove」的累积泄漏。
   var _titleVisHandler = null;
@@ -274,7 +306,7 @@
     _titleCtx = _titleCanvas.getContext('2d');
     _titleParticleSystem = new Juice.ParticleSystem();
     var lastSpawnTime = 0;
-    // 页面不可见时暂停动画（0.5.20：只注册一次，句柄由模块级 _titleVisHandler 持有，
+    // 页面不可见时暂停动画（只注册一次，句柄由模块级 _titleVisHandler 持有，
     // _stopTitleParticles 时统一 removeEventListener，不再每次进标题页累积匿名监听）
     if (!_titleVisHandler) {
       _titleVisHandler = _onTitleVisibility;
@@ -318,6 +350,9 @@
     if (_titleVisHandler) { document.removeEventListener('visibilitychange', _titleVisHandler); _titleVisHandler = null; }
   }
 
+  // ─────────────────────────────────────────────
+  // 标题页控制
+  // ─────────────────────────────────────────────
   function _showTitle() {
     var ts = document.getElementById('title-screen');
     if (!ts) return;
@@ -329,11 +364,11 @@
   }
 
   /**
-   * 标题页存档槽位下拉（0.5.9）：
+ * 标题页存档槽位下拉：
    * #save-slot 生成 3 个 option——有档槽文案「存档 N · 秋3日 第1年 · 10/3」（listSlots 摘要），
-   * 空槽文案「存档 N · 空」，value = 槽号。选中槽即进：有档槽 _continueGame(N)，空槽 confirm 后 _startNewGame(N)（0.5.22 已移除「进入游戏」按钮）。
+ * 空槽文案「存档 N · 空」，value = 槽号。选中槽即进：有档槽 _continueGame(N)，空槽 confirm 后 _startNewGame(N)（已移除「进入游戏」按钮）。
    * 每次进标题页重建 option（摘要随最新存档刷新）。select 不做入场动画（原生下拉加动画易穿帮）。
-   * 0.5.24：#save-slot 原生 select 已隐藏（option 弹层浏览器自绘无法设背景），option 生成循环原样搬到填充自定义浮层
+ * #save-slot 原生 select 已隐藏（option 弹层浏览器自绘无法设背景），option 生成循环原样搬到填充自定义浮层
    * #save-slot-panel——每项一个 <div class="save-slot-opt" data-value="N">，文案公式一字不动；sel 不再写入。
    */
   function _renderTitleSlots() {
@@ -465,6 +500,9 @@
     };
   }
 
+  // ─────────────────────────────────────────────
+  // 标题隐藏 / 关页提示
+  // ─────────────────────────────────────────────
   function _hideTitle(src) {
     // src：'continue'=继续读档（要提示）/ 'new'=新建（不提示），缺省不提示。
     // 0.6.7：关页存档提示只跟「继续上局」相关；新建=开新档不该弹（提示里的「槽 N」还是上次的，纯噪音）。
@@ -488,8 +526,11 @@
     }
     _closeNotice = null;   // 无条件清：新建路径不读标记也要清，别漏给下次继续（重复提示回归）
   }
+  // ─────────────────────────────────────────────
+  // 开局 / 续局
+  // ─────────────────────────────────────────────
   function _startNewGame(requestedSlot) {
-    // 落槽规则（0.5.8）：从标题页点槽位列表进来的带 requestedSlot（该槽为空、confirm 过才进来，直接落）；
+    // 落槽规则：从标题页点槽位列表进来的带 requestedSlot（该槽为空、confirm 过才进来，直接落）；
     // 点「单人游戏」进来的不传 → 空槽优先：从槽 1 往后找第一个空槽；
     // 三槽全满 → 依次 confirm 槽1/槽2/槽3 让玩家选覆盖哪个，全取消则不开局。
     var target = requestedSlot || null;
@@ -528,8 +569,8 @@
     UI._grassOutlineCanvas = null;
     UI._grassDataRev = 0;
     UI._grassRingCropCache = null;
-    UI._shopGShownRes = null;   // 0.5.38：进游戏（新游戏/读档）清 G 块「显示过的资源」记忆（上一局空格不泄漏到本局；关店不清、会话内常驻）
-    Player._mainShownRes = null;   // 0.5.39：新游戏清主背包「显示过的资源」记忆（上一局空格不泄漏到本局）
+    UI._shopGShownRes = null;   // 进游戏（新游戏/读档）清 G 块「显示过的资源」记忆（上一局空格不泄漏到本局；关店不清、会话内常驻）
+    Player._mainShownRes = null;   // 新游戏清主背包「显示过的资源」记忆（上一局空格不泄漏到本局）
     UI.render();
     UI._renderBottomHotbar();
     UI._startAnimLoop();
@@ -539,7 +580,7 @@
     });
   }
   function _continueGame(slot) {
-    // 0.5.8：多传 slot（标题页槽位列表点有档槽进；缺省仍走 currentSlot）
+    // 多传 slot（标题页槽位列表点有档槽进；缺省仍走 currentSlot）
     if (!SaveGame.hasSave(slot)) return;
     // 立即开始加载和渲染（并行于标题淡出）
     UI._stopAnimLoop();
@@ -554,8 +595,8 @@
     UI._grassOutlineCanvas = null;
     UI._grassDataRev = 0;
     UI._grassRingCropCache = null;
-    UI._shopGShownRes = null;   // 0.5.38：进游戏（新游戏/读档）清 G 块「显示过的资源」记忆（上一局空格不泄漏到本局；关店不清、会话内常驻）
-    Player._mainShownRes = null;   // 0.5.39：读档进游戏清主背包记忆（不同档的背包布局互不污染）
+    UI._shopGShownRes = null;   // 进游戏（新游戏/读档）清 G 块「显示过的资源」记忆（上一局空格不泄漏到本局；关店不清、会话内常驻）
+    Player._mainShownRes = null;   // 读档进游戏清主背包记忆（不同档的背包布局互不污染）
     UI.render();
     UI._renderBottomHotbar();
     UI._startAnimLoop();

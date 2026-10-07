@@ -1,5 +1,26 @@
 /**
  * ui-snow.js — 从 ui.js 拆分
+ *
+ * 任务书可读化批次：头部补全「方法清单」字段（纯注释，零代码改动）
+ * 方法清单：
+ *   - _drawSnow
+ *   - _tickLandedSnow
+ *   - _drawSnowLanded
+ *   - _newSnow
+ *   - _ensureSnowState
+ *   - _accumulateSnow
+ *   - _decaySnow
+ *   - _clearSnowAll
+ *   - _ensureSnowCanvas
+ *   - _redrawSnowAll
+ *   - _paintSnowCell
+ *   - _tickSnow
+ *   - _growSnowStep
+ *   - _syncSnowCanvas
+ *   - _buildShakeSnowBaseCache
+ *   - _blitSnowGround
+ *   - _snowSig
+ *
  */
 
 const _snowMethods = {
@@ -614,7 +635,7 @@ const _snowMethods = {
 
       this._redrawSnowAll();
 
-      // 0.5.50：veg 层失效改按「雪签名」（格+量化桶）比较，替代旧「雪花数量」；同桶内 ps 24→31 不重烘、跨桶 31→40 各重烘一次。_snowTotal 保留（L537 他处仍用），仅新增 sig 比较
+      // veg 层失效改按「雪签名」（格+量化桶）比较，替代旧「雪花数量」；同桶内 ps 24→31 不重烘、跨桶 31→40 各重烘一次。_snowTotal 保留（L537 他处仍用），仅新增 sig 比较
       const sig = this._snowSig();
       if (sig !== this._vegSnowSig) { this._buildVegCache(); this._vegSnowSig = sig; }  // 雪签名变→刷新草基部截断
 
@@ -707,7 +728,7 @@ const _snowMethods = {
 
 
 
-  /** 0.5.50：雪签名单一权威源——"格+量化桶"（"r,c,bucket|…"，桶=ceil(min(ps,cs)/max(1,cs/6))，48px→8px 一档 0~6）。
+ /** 雪签名单一权威源——"格+量化桶"（"r,c,bucket|…"，桶=ceil(min(ps,cs)/max(1,cs/6))，48px→8px 一档 0~6）。
    *  供 _ensureGrassOutline（描边 key）与 _syncSnowCanvas（veg 层失效）共用，防三处漂移。
    *  同桶内 ps 长大不重烘；跨桶各重烘一次。无雪返回空串（末支据此判雪清空）。 */
   _snowSig() {

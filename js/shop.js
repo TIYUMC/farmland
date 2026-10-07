@@ -685,7 +685,7 @@ UI._drawShopOverlay = function() {
       pushStacks(resMap[rid], Player[rid]);
       (this._shopGShownRes = this._shopGShownRes || new Set()).add(rid);
     } else if (!Player._hbHasResource(rid) && this._shopGShownRes && this._shopGShownRes.has(rid)) {
-      // 曾显示过、现已归 0（被花光/用完）：留占位格，防止后续物品滑位（0.5.37）
+      // 曾显示过、现已归 0（被花光/用完）：留占位格，防止后续物品滑位
       items.push({ key: resMap[rid], count: 0 });
     } else {
       if (this._shopGShownRes) this._shopGShownRes.delete(rid);
