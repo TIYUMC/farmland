@@ -1073,9 +1073,9 @@ body {
   border-bottom-color: #c4c4c4;
   border-right-color: #c4c4c4;
 }
-/* 标题页存档选择下拉：与 .mc-btn 观感对齐（同字号/行高/等宽、深色半透明底+浅色字+同款描边），保留原生下拉箭头 */
+/* 标题页存档选择下拉：与 .mc-btn 观感对齐（宽度 280px 与 .mc-btn 对齐、同字号/行高/等宽、深色半透明底+浅色字+同款描边），保留原生下拉箭头 */
 .mc-select {
-  width: 260px;
+  width: 280px;
   padding: 10px 0;
   font-size: 22px;
   font-weight: bold;
@@ -1099,7 +1099,7 @@ body {
   border-color: #2a1a4a;    /* 深色描边跟深蓝横幅走，原 3D 灰边（#c4/#3a 四向）压不住素材 */
 }
 /* 标题页自定义存档下拉浮层（0.5.24：原生 option 弹层无法设背景，改按钮 + 浮层组件；弹层 background 用注册表 enchantment 贴图） */
-#save-slot-wrap { position: relative; width: 260px; }
+#save-slot-wrap { position: relative; width: 280px; }
 #save-slot-panel {
   position: absolute; top: 100%; left: 0; width: 100%; z-index: 11;
   background-color: #1a1230;            /* 贴图未加载完成时的兜底深蓝 */
@@ -1138,6 +1138,62 @@ body {
 #confirm-btns {
   position: relative; z-index: 2;
   display: flex; gap: 10px; justify-content: center;
+}
+/* 0.7：标题界面「鸣谢」独立全屏。背景圆石背景.png（与 #title-bg 同源）运行时注入，深蓝兜底防未加载露白；右上角叉叉贴 cancel 贴图（不用 emoji/CSS 自画）；z 高于 confirm-overlay 10000 */
+#credits-overlay {
+  position: fixed; inset: 0; z-index: 10001; display: none;
+  background-color: #0a0f2c;            /* 背景图未注入时的深蓝兜底 */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+#credits-overlay.show { display: block; }
+#credits-close {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  width: 34px; height: 34px; min-width: 0; min-height: 0; max-width: none; padding: 0;
+  background-color: rgba(10, 15, 44, .55);   /* 贴图未注入时兜底 */
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 20px 20px;
+  image-rendering: pixelated;
+  border: 2px solid rgba(0, 0, 0, .5);
+  cursor: pointer;
+}
+#credits-close:hover { background-color: rgba(10, 15, 44, .85); }
+/* 0.7.1：标题右上角「鸣谢名单」小按钮（原在按钮列的全长 mc-btn，移到右上角做小按钮；main.js 按 id 绑定不变） */
+#btn-credits {
+  position: absolute; top: 8px; right: 8px; z-index: 11;
+  padding: 4px 10px;
+  font-family: 'Silkscreen', sans-serif;
+  font-size: 13px; font-weight: bold; color: #fff;
+  background: rgba(126, 126, 126, .85);
+  border: 2px solid #000;
+  border-top-color: #c4c4c4; border-left-color: #c4c4c4;
+  border-bottom-color: #3a3a3a; border-right-color: #3a3a3a;
+  image-rendering: pixelated; cursor: pointer; letter-spacing: 1px;
+}
+#credits-body {
+  position: relative; z-index: 1;
+  height: 100%; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 24px; padding: 48px;
+}
+#credits-body h2 {
+  margin: 0;
+  color: var(--title-color);
+  font-family: 'Silkscreen', sans-serif;
+  font-size: 40px;
+  text-shadow: 0 0 10px rgba(0, 0, 0, .8);
+}
+.credits-line {
+  margin: 0;
+  color: #f2f5ff;
+  font-family: 'Silkscreen', sans-serif;
+  font-size: 20px;
+  line-height: 2;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, .8);
 }
 #title-subtitle {
   margin-top: 8px;

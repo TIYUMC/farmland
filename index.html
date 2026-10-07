@@ -32,6 +32,7 @@
 
       <canvas id="title-particles"></canvas>
       <div id='title-bg' style='background-image:url(圆石背景.png)'></div>
+      <div id="btn-credits">鸣谢名单</div>
       <div id="title-content" style="z-index:10">
 
         <h1 id="title-logo">Terraform</h1>
@@ -50,7 +51,7 @@
 
         </div>
 
-        <div id="title-version">0.7</div>
+        <div id="title-version">0.8</div>
 
       </div>
 
@@ -282,53 +283,53 @@
 
 
 
-  <script src="js/assets.js?v=0.7"></script>
+  <script src="js/assets.js?v=0.8"></script>
 
-  <script src="js/data.js?v=0.7"></script>
+  <script src="js/data.js?v=0.8"></script>
 
-  <script src="js/engine.js?v=0.7"></script>
+  <script src="js/engine.js?v=0.8"></script>
 
-  <script src="js/farm.js?v=0.7"></script>
+  <script src="js/farm.js?v=0.8"></script>
 
-  <script src="js/player.js?v=0.7"></script>
+  <script src="js/player.js?v=0.8"></script>
 
-  <script src="js/economy.js?v=0.7"></script>
+  <script src="js/economy.js?v=0.8"></script>
 
-  <script src="js/juice.js?v=0.7"></script>
+  <script src="js/juice.js?v=0.8"></script>
 
-  <script src="js/quest.js?v=0.7"></script>
+  <script src="js/quest.js?v=0.8"></script>
 
-  <script src="js/ui-core.js?v=0.7"></script>
+  <script src="js/ui-core.js?v=0.8"></script>
 
-  <script src="js/ui-farm-view.js?v=0.7"></script>
+  <script src="js/ui-farm-view.js?v=0.8"></script>
 
-  <script src="js/ui-weather-view.js?v=0.7"></script>
+  <script src="js/ui-weather-view.js?v=0.8"></script>
 
-  <script src="js/ui-inventory-view.js?v=0.7"></script>
+  <script src="js/ui-inventory-view.js?v=0.8"></script>
 
-  <script src="js/ui-events.js?v=0.7"></script>
+  <script src="js/ui-events.js?v=0.8"></script>
 
-  <script src="js/ui-effects.js?v=0.7"></script>
+  <script src="js/ui-effects.js?v=0.8"></script>
 
-  <script src="js/ui-snow.js?v=0.7"></script>
+  <script src="js/ui-snow.js?v=0.8"></script>
 
-  <script src="js/ui-autumn.js?v=0.7"></script>
+  <script src="js/ui-autumn.js?v=0.8"></script>
 
-  <script src="js/ui-weather.js?v=0.7"></script>
+  <script src="js/ui-weather.js?v=0.8"></script>
 
-  <script src="js/ui-cache.js?v=0.7"></script>
+  <script src="js/ui-cache.js?v=0.8"></script>
 
-  <script src="js/ui-scene.js?v=0.7"></script>
+  <script src="js/ui-scene.js?v=0.8"></script>
 
-  <script src="js/ui-quest.js?v=0.7"></script>
+  <script src="js/ui-quest.js?v=0.8"></script>
 
-  <script src="js/inventory.js?v=0.7"></script>
+  <script src="js/inventory.js?v=0.8"></script>
 
-  <script src="js/shop.js?v=0.7"></script>
+  <script src="js/shop.js?v=0.8"></script>
 
-  <script src="js/treefarm.js?v=0.7"></script>
+  <script src="js/treefarm.js?v=0.8"></script>
 
-  <script src="js/savegame.js?v=0.7"></script>
+  <script src="js/savegame.js?v=0.8"></script>
 
   <!-- 0.7：全局自定义 confirm 弹窗（微信/移动内嵌浏览器屏蔽原生 confirm，全走自绘 DOM；贴图只贴居中小卡片 #confirm-card、全屏层只做半透明遮罩，运行时由 main.js 给 #confirm-card 注入 enchantment，z 高于 title-screen 9999） -->
   <div id="confirm-overlay">
@@ -340,7 +341,18 @@
       </div>
     </div>
   </div>
-  <script src="js/main.js?v=0.7"></script>
+
+  <!-- 0.7：标题界面「鸣谢」独立全屏 #credits-overlay（独立界面盖住标题；显示时整页盖住，满足「新开一个界面」；背景圆石背景.png 与 #title-bg 同源、运行时由 main.js 注入；右上角叉叉贴 cancel 贴图，不用 emoji/CSS 自画；z 高于 confirm-overlay 10000） -->
+  <div id="credits-overlay">
+    <button id="credits-close" type="button" class="mc-btn" aria-label="关闭"></button>
+    <div id="credits-body">
+      <h2>鸣谢</h2>
+      <p class="credits-line">世戸工作室</p>
+      <p class="credits-line">晚风</p>
+    </div>
+  </div>
+
+  <script src="js/main.js?v=0.8"></script>
 
 </body>
 

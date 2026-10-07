@@ -242,6 +242,20 @@
     const confirmNo = document.getElementById('confirm-no');
     if (confirmYes) confirmYes.addEventListener('click', function () { _confirmResolve(true); });
     if (confirmNo) confirmNo.addEventListener('click', function () { _confirmResolve(false); });
+    // 0.7：标题界面「鸣谢」入口 + 独立全屏 #credits-overlay（独立界面盖住标题；背景圆石背景.png 与 #title-bg 同源、运行时注入；右上叉叉贴 cancel 贴图、不用 emoji；Esc 关闭）
+    const creditsOverlay = document.getElementById('credits-overlay');
+    const creditsClose = document.getElementById('credits-close');
+    const creditsBtn = document.getElementById('btn-credits');
+    if (creditsOverlay) creditsOverlay.style.backgroundImage = 'url(圆石背景.png)';
+    if (creditsClose && typeof ASSETS !== 'undefined' && ASSETS.registry['cancel'])
+      creditsClose.style.backgroundImage = `url(${ASSETS.registry['cancel']})`;
+    const _showCredits = function () { if (creditsOverlay) creditsOverlay.classList.add('show'); };
+    const _hideCredits = function () { if (creditsOverlay) creditsOverlay.classList.remove('show'); };
+    if (creditsBtn) creditsBtn.addEventListener('click', function () { _showCredits(); });   // 闭包不传参（0.6.1 裸绑定教训）
+    if (creditsClose) creditsClose.addEventListener('click', function () { _hideCredits(); });
+    document.addEventListener('keydown', function (e) {
+      if (creditsOverlay && e.key === 'Escape' && creditsOverlay.classList.contains('show')) _hideCredits();
+    });
     if (slotBtn && slotPanel && selSaveSlot) {
       // 按钮 click → toggle 浮层（none/block）
       slotBtn.addEventListener('click', function () {
