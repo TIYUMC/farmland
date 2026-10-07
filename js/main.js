@@ -465,13 +465,15 @@
     };
   }
 
-  function _hideTitle() {
+  function _hideTitle(src) {
+    // src：'continue'=继续读档（要提示）/ 'new'=新建（不提示），缺省不提示。
+    // 0.6.7：关页存档提示只跟「继续上局」相关；新建=开新档不该弹（提示里的「槽 N」还是上次的，纯噪音）。
     var ts = document.getElementById('title-screen');
     if (ts) ts.className = 'overlay-hidden';
     _stopTitleParticles();
     // 0.6.2：标题隐藏后（HUD 确定可见）一次性提示「上次关闭时是否已自动存档」。
     // 只告知、不做任何操作——失败也不自动重试（避免进游戏瞬间写旧态，语义不清）；文案不带 emoji。
-    if (_closeNotice) {
+    if (_closeNotice && src === 'continue') {
       if (typeof UI !== 'undefined' && UI.showStatus) {
         if (_closeNotice.ok) {
           var d = new Date(_closeNotice.ts);
@@ -483,8 +485,8 @@
           UI.showStatus('上次关闭时自动存档失败，进度可能未保存，请手动点「存档」', 4000);
         }
       }
-      _closeNotice = null;   // 已提示即清（标记本身在 init 读时已 removeItem，这里是兜底）
     }
+    _closeNotice = null;   // 无条件清：新建路径不读标记也要清，别漏给下次继续（重复提示回归）
   }
   function _startNewGame(requestedSlot) {
     // 落槽规则（0.5.8）：从标题页点槽位列表进来的带 requestedSlot（该槽为空、confirm 过才进来，直接落）；
@@ -533,7 +535,7 @@
     UI._startAnimLoop();
     // 标题淡出
     _titleTransitionOut(function() {
-      _hideTitle();
+      _hideTitle('new');
     });
   }
   function _continueGame(slot) {
@@ -559,7 +561,7 @@
     UI._startAnimLoop();
     // 标题淡出
     _titleTransitionOut(function() {
-      _hideTitle();
+      _hideTitle('continue');
     });
   }
 
