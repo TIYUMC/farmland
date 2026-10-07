@@ -698,6 +698,16 @@ const _sceneMethods = {
    *  A/B 按 key（场景+tint+cs+雪签名+农场数据标记+画布尺寸+年季日）缓存，key 不变零烘焙；
    *  追光只画 alpha>0.205 的格（floor 之外的浪费直接跳过）；草颤期间轮廓不重建（短暂 1~2 帧错位）。
    *  1px 硬边像素风，全最近邻。 */
+  /** 邻近提亮 alpha：鼠标到元素的像素距离 distPx 越小越亮，RADIUS=cs*4 处回落 floor(0.20)。
+   *  草描边逐格追光(_drawGrassOutline) 与「有元素格」每帧提亮层(_drawProxHighlight) 共用此式，保证两套邻近反馈视觉一致。
+   *  @param {number} distPx 鼠标到元素格心的像素距离
+   *  @param {number} cs 格宽（像素）
+   *  @returns {number} 0.20~1.0 的 alpha */
+  _proxBoost(distPx, cs) {
+    const R = cs * 4;
+    return 0.20 + 0.80 * Math.max(0, Math.min(1, 1 - distPx / R));
+  },
+
   _drawGrassOutline(ctx) {
     if (this._transition) return;   // 滑场过渡不画（坐标错乱）；_busy 不挡：草身照常显示，白边不能跟着闪没
     const out = this._ensureGrassOutline();
@@ -726,7 +736,7 @@ const _sceneMethods = {
       const p = out.centroids[i];
       const dx = this._olMouseX - p.x, dy = this._olMouseY - p.y;
       const d = Math.sqrt(dx * dx + dy * dy);
-      const a = 0.20 + 0.80 * Math.max(0, Math.min(1, 1 - d / RADIUS));
+      const a = this._proxBoost(d, cs);
       if (a <= 0.205) continue;   // alpha≈floor 的格跳过（避免逐格 drawImage 浪费）
       const ring = this._getGrassRingCrop(p, cs, out);
       if (!ring) continue;
@@ -749,6 +759,45 @@ const _sceneMethods = {
         // 非颤格：画回裁剪原点，与 B 逐像素对齐（零漂移）
         ctx.drawImage(ring, (c - 1) * cs, (r - 1) * cs);
       }
+    }
+    ctx.restore();
+  },
+
+  /** B · 邻近提亮层（A 路线，每帧）：只遍历「有元素格」（farm 场景的花、treeFarm 场景的树苗/树冠），
+   *  对每格按鼠标到格心距离用 _proxBoost 算 alpha，叠一层白色 overlay 提亮（鼠标近→亮，远→淡出）。
+   *  与草描边逐格追光共用 _proxBoost，视觉一致；每帧只过几十个有元素格，零缓存、零行为风险。
+   *  画在 vegCache 之上、夜色蒙层之下：白天清晰提亮，夜晚被夜色自然吸收成柔和微光。 */
+  _drawProxHighlight(ctx, cs) {
+    if (this._mouseX === undefined || this._mouseX === -1e4) return;   // 鼠标离场 → 无提亮
+    const mx = this._mouseX, my = this._mouseY;
+    const cells = [];
+    if (this.scene === 'treeFarm') {
+      if (TreeFarm.trees) {
+        for (let r = 0; r < DATA.FARM.ROWS; r++)
+          for (let c = 0; c < DATA.FARM.COLS; c++) {
+            const t = TreeFarm.trees[r] && TreeFarm.trees[r][c];
+            if (t && (t.stage === 'sapling' || t.stage === 'grown')) cells.push({ x: c * cs, y: r * cs });
+          }
+      }
+    } else {
+      if (Farm.flowers) {
+        for (let r = 0; r < DATA.FARM.ROWS; r++)
+          for (let c = 0; c < DATA.FARM.COLS; c++) {
+            if ((Farm.flowers[r] || [])[c]) cells.push({ x: c * cs, y: r * cs });
+          }
+      }
+    }
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const cx = cell.x + cs / 2, cy = cell.y + cs / 2;
+      const d = Math.sqrt((mx - cx) * (mx - cx) + (my - cy) * (my - cy));
+      const a = this._proxBoost(d, cs);
+      if (a <= 0.205) continue;   // 远离鼠标：淡出截止（不常驻洗白）
+      ctx.globalAlpha = a * 0.45;   // 上限半透明，避免全白吃掉像素细节
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(cell.x, cell.y, cs, cs);
     }
     ctx.restore();
   },
@@ -1220,6 +1269,34 @@ const _sceneMethods = {
 
 
 
+  /** C · 作物成熟金描边（替换旧底部金线）：把成熟植株本体烘进离屏，跑与草描边同源的「8 向外扩→擦心→染金」
+   *  流水线得到像素硬边金环，叠回作物格。只作用于 isGrown 作物；未成熟不画。
+   *  零新增缓存 key——本方法在 _drawCropCell（缓存重建期调用）内执行，金环自然随 farm/veg 缓存失效，无独立失效逻辑。 */
+  _drawCropGoldOutline(ctx, x, y, cs, cell) {
+    if (!this._cropGoldA) this._cropGoldA = document.createElement('canvas');
+    if (!this._cropGoldB) this._cropGoldB = document.createElement('canvas');
+    const A = this._cropGoldA, B = this._cropGoldB;
+    if (A.width !== cs || A.height !== cs) { A.width = cs; A.height = cs; }
+    if (B.width !== cs || B.height !== cs) { B.width = cs; B.height = cs; }
+    const a = A.getContext('2d');
+    a.setTransform(1, 0, 0, 1, 0, 0);
+    a.clearRect(0, 0, cs, cs);
+    a.imageSmoothingEnabled = false;
+    a.globalAlpha = 1;
+    this._bakeCropBody(a, 0, 0, cs, cell);   // 烘植株本体（剔除进度条/金线），与草描边同源
+    const o = B.getContext('2d');
+    o.setTransform(1, 0, 0, 1, 0, 0);
+    o.clearRect(0, 0, cs, cs);
+    o.imageSmoothingEnabled = false;
+    const O = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+    for (let i = 0; i < 8; i++) o.drawImage(A, O[i][0], O[i][1]);
+    o.globalCompositeOperation = 'destination-out'; o.drawImage(A, 0, 0);
+    o.globalCompositeOperation = 'source-in'; o.fillStyle = '#ffd700'; o.fillRect(0, 0, cs, cs);
+    o.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(B, x, y);
+  },
+
   /** 画一格已耕地里长着的作物：成熟用最后一帧生长贴图，生长中按进度选 assetStages 帧并缩放；
 
    *  贴图缺失回退 emoji。附带生长进度条（未成熟）与成熟金色底线标记。由 _renderStaticScene 调用。 */
@@ -1295,14 +1372,9 @@ const _sceneMethods = {
 
     }
 
-    // 成熟标记：底部一根金色细线，不画头顶小金币，保持画面干净
-
+    // 成熟标记：替换旧底部金线 → 烘焙像素金描边（植株轮廓外 1px 硬边金环），零行为风险
     if (isGrown) {
-
-      ctx.fillStyle = 'rgba(255,215,0,0.55)';
-
-      ctx.fillRect(x + 2, y + cs - 3, cs - 4, 2);
-
+      this._drawCropGoldOutline(ctx, x, y, cs, cell);
     }
 
   },
